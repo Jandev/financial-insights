@@ -22,8 +22,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      security-events: write   # for SARIF upload to GitHub code scanning
-      actions: read            # for codeql-action/upload-sarif telemetry (required on private repos)
 
     outputs:
       digest: ${{ steps.push.outputs.digest }}
@@ -63,22 +61,13 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan image with Trivy
-        id: trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: financial-insights:scan
-          format: sarif
-          output: trivy-results.sarif
+          format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
-
-      - name: Upload Trivy SARIF to GitHub code scanning
-        if: always()   # upload even when Trivy fails so findings appear in Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy-container
 
       # Only push if scan passed
       - name: Push image to GHCR
