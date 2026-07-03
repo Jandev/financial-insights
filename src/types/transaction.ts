@@ -12,7 +12,6 @@ export type TransactionCode =
   | 'ga' // ATM (variant)
   | 'bg' // Batch payment
   | 'db' // Bank costs / debit interest
-  // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {})
 
 /**
