@@ -2,6 +2,9 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
+# Upgrade npm to pick up patched bundled deps (picomatch, sigstore)
+RUN npm install -g npm@latest
+
 COPY package*.json ./
 RUN npm ci
 
@@ -11,6 +14,9 @@ RUN npm run build
 # ── Stage 2: Production ─────────────────────────────────────────────────────
 FROM node:22-alpine AS production
 WORKDIR /app
+
+# Upgrade npm to pick up patched bundled deps (picomatch, sigstore)
+RUN npm install -g npm@latest
 
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
