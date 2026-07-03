@@ -17,7 +17,7 @@ Rabobank exports follow this pattern:
 CSV_A_<IBAN>_EUR_YYYYMM.csv
 ```
 
-Example: `CSV_A_NL03RABO0150475810_EUR_202406.csv`
+Example: `CSV_A_NL00RABO0000000000_EUR_202406.csv`
 
 ### Format
 
