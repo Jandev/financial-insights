@@ -52,6 +52,7 @@ npm run lint
 | Routing | React Router 6 |
 | State | Zustand 5 |
 | Styling | Tailwind CSS 4 |
+| UI primitives | Radix UI |
 | Charts | Recharts 3 |
 | Table | TanStack Table 8 |
 | CSV parsing | PapaParse |
@@ -65,7 +66,9 @@ financial-insights/
 ├── data/transactions/     # Rabobank CSV exports (gitignored)
 ├── design/                # Penpot source file + screen mockups
 ├── src/
-│   ├── components/        # Reusable UI components
+│   ├── components/
+│   │   ├── ui/            # Base components (Card, Badge, Button)
+│   │   └── layout/        # Shell components (Layout, Sidebar, WindowChrome)
 │   ├── pages/             # Route-level page components
 │   ├── lib/               # Utilities (CSV parsing, formatters, etc.)
 │   ├── store/             # Zustand state stores

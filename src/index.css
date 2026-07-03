@@ -1,1 +1,223 @@
 @import "tailwindcss";
+
+/* ─── Class-based dark mode ────────────────────────────────────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Theme tokens (CSS vars → Tailwind utility classes) ───────────────────── */
+/*
+ * @theme inline means Tailwind reads the CSS var at runtime instead of
+ * baking a static value. This makes dark/light switching work purely via CSS.
+ *
+ * Generated classes:
+ *   bg-bg-base, bg-bg-card, bg-bg-sidebar …
+ *   text-text-primary, text-text-secondary …
+ *   text-accent, bg-accent, border-border …
+ */
+@theme inline {
+  /* Surfaces */
+  --color-bg-base:     var(--bg-base);
+  --color-bg-surface:  var(--bg-surface);
+  --color-bg-card:     var(--bg-card);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-sidebar:  var(--bg-sidebar);
+
+  /* Brand */
+  --color-accent:      var(--accent);
+  --color-accent-dim:  var(--accent-dim);
+
+  /* Borders */
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+
+  /* Text */
+  --color-text-primary:   var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted:     var(--text-muted);
+
+  /* Semantic */
+  --color-income:      var(--income);
+  --color-income-dim:  var(--income-dim);
+  --color-expense:     var(--expense);
+  --color-expense-dim: var(--expense-dim);
+  --color-warn:        var(--warn);
+  --color-warn-dim:    var(--warn-dim);
+
+  /* Charts */
+  --color-chart-blue:   var(--chart-blue);
+  --color-chart-teal:   var(--chart-teal);
+  --color-chart-pink:   var(--chart-pink);
+  --color-chart-purple: var(--chart-purple);
+  --color-chart-amber:  var(--chart-amber);
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+               'Inter', sans-serif;
+
+  /* Radii */
+  --radius-card:  16px;
+  --radius-input:  8px;
+  --radius-badge:  4px;
+  --radius-nav:    8px;
+  --radius-pill:  20px;
+}
+
+/* ─── Color token definitions ───────────────────────────────────────────────── */
+@layer base {
+  /* Light mode (default) */
+  :root {
+    /* Surfaces */
+    --bg-base:     #F0F2FF;
+    --bg-surface:  #E8EAFC;
+    --bg-card:     rgba(255, 255, 255, 0.80);
+    --bg-elevated: rgba(238, 240, 255, 0.87);
+    --bg-sidebar:  rgba(244, 246, 255, 0.80);
+
+    /* Brand */
+    --accent:     #3B62FF;
+    --accent-dim: #E8EEFF;
+
+    /* Borders — blue-tinted hairline, simulates glass edge */
+    --border:        rgba(59, 98, 255, 0.10);
+    --border-strong: rgba(59, 98, 255, 0.20);
+
+    /* Text */
+    --text-primary:   #1A1A2E;
+    --text-secondary: #4A5580;
+    --text-muted:     #8A96B8;
+
+    /* Semantic */
+    --income:      #16A37F;
+    --income-dim:  #D4F5EF;
+    --expense:     #E8313B;
+    --expense-dim: #FFE8EA;
+    --warn:        #D97706;
+    --warn-dim:    #FEF3C7;
+
+    /* Charts */
+    --chart-blue:   #3B62FF;
+    --chart-teal:   #0FA370;
+    --chart-pink:   #E8447B;
+    --chart-purple: #9333EA;
+    --chart-amber:  #D97706;
+
+    /* Internal: shadow tint for glass cards */
+    --shadow-card: rgba(59, 98, 255, 0.10);
+  }
+
+  /* Dark mode */
+  .dark {
+    --bg-base:     #0B0E17;
+    --bg-surface:  #131824;
+    --bg-card:     rgba(26, 32, 48, 0.80);
+    --bg-elevated: rgba(34, 43, 61, 0.87);
+    --bg-sidebar:  rgba(14, 17, 32, 0.80);
+
+    --accent:     #5B78FF;
+    --accent-dim: #1A2456;
+
+    --border:        #1E2840;
+    --border-strong: #2A3A55;
+
+    --text-primary:   #DDE3F0;
+    --text-secondary: #7A8AAD;
+    --text-muted:     #3D4A63;
+
+    --income:      #2DD4A0;
+    --income-dim:  #0D2E28;
+    --expense:     #FF5862;
+    --expense-dim: #2E0D0F;
+    --warn:        #FFB547;
+    --warn-dim:    #2E1E05;
+
+    --chart-blue:   #5B78FF;
+    --chart-teal:   #2DD4A0;
+    --chart-pink:   #FF6B9D;
+    --chart-purple: #C471F5;
+    --chart-amber:  #FFB547;
+
+    --shadow-card: rgba(0, 0, 0, 0.30);
+  }
+
+  /* ── Base resets ──────────────────────────────────────────────────────────── */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family: var(--font-sans);
+    /* Prevent layout shift from scrollbar appearing */
+    overflow-y: scroll;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100dvh;
+  }
+}
+
+/* ─── Glass surface utilities ───────────────────────────────────────────────── */
+/*
+ * These can't be expressed as single Tailwind utility classes because they
+ * require multi-layer backgrounds (shimmer gradient + translucent base).
+ * They are defined as @layer components so Tailwind's specificity rules apply.
+ */
+@layer components {
+  /**
+   * Glass card — for KPI cards, content panels
+   * Light refraction shimmer (top-left → transparent) over translucent base
+   */
+  .glass-card {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 60%),
+      var(--bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: 0 2px 16px 0 var(--shadow-card);
+  }
+
+  /**
+   * Glass sidebar — fixed left navigation panel
+   * Shimmer from left edge (horizontal gradient)
+   */
+  .glass-sidebar {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.094) 0%, rgba(255, 255, 255, 0) 100%),
+      var(--bg-sidebar);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-right: 1px solid var(--border);
+  }
+
+  /**
+   * Glass window chrome — top bar
+   * Shimmer from top (vertical gradient)
+   */
+  .glass-chrome {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.094) 0%, rgba(255, 255, 255, 0) 100%),
+      var(--bg-sidebar);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /**
+   * Glass elevated — for dropdowns, tooltips, popovers
+   */
+  .glass-elevated {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 50%),
+      var(--bg-elevated);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-input);
+    box-shadow: 0 8px 32px 0 var(--shadow-card);
+  }
+}
