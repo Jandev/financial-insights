@@ -1,20 +1,20 @@
 /**
- * Express API server — placeholder for issue #13.
+ * Express API server — issue #13.
  *
  * Serves the built React app as static files and exposes lightweight API
  * endpoints for the Docker production environment.
  *
- * Implemented endpoints:
+ * Endpoints:
  *   GET /api/health        — Docker healthcheck
  *   GET /api/config        — non-secret config for the browser
- *   GET /api/transactions  — list CSV filenames (placeholder: returns [])
- *   GET /api/transactions/:filename — stream CSV file (placeholder: 501)
+ *   GET /api/transactions  — list CSV filenames in TRANSACTIONS_PATH
+ *   GET /api/transactions/:filename — stream a CSV file
  *   GET /*                 — static SPA fallback
- *
- * TODO(#13): implement full CSV listing/streaming logic.
  */
 
+import cors from 'cors'
 import express from 'express'
+import { readdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,6 +31,7 @@ const app = express()
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 
+app.use(cors())
 app.use(basicAuth)
 
 // ── API routes ──────────────────────────────────────────────────────────────
@@ -48,32 +49,41 @@ app.get('/api/health', (_req, res) => {
  * Non-secret config values safe to expose to the browser.
  * Never include API keys or secrets here.
  */
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', async (_req, res) => {
+  let transactionsAvailable = false
+  try {
+    const files = await readdir(TRANSACTIONS_PATH)
+    transactionsAvailable = files.some(f => f.endsWith('.csv'))
+  } catch {
+    // Directory missing or unreadable — transactionsAvailable stays false
+  }
   res.json({
     appTitle: APP_TITLE,
-    // TODO(#13): set to true once CSV listing is implemented
-    transactionsAvailable: false,
+    transactionsAvailable,
   })
 })
 
 /**
- * List CSV filenames in TRANSACTIONS_PATH.
- * TODO(#13): replace stub with real fs.readdir implementation.
+ * List CSV filenames in TRANSACTIONS_PATH, sorted alphabetically.
+ * Returns [] if the directory is empty, missing, or unreadable.
  */
-app.get('/api/transactions', (_req, res) => {
-  // Placeholder — full implementation in #13
-  res.json([])
+app.get('/api/transactions', async (_req, res) => {
+  try {
+    const files = await readdir(TRANSACTIONS_PATH)
+    res.json(files.filter(f => f.endsWith('.csv')).sort())
+  } catch {
+    res.json([])
+  }
 })
 
 /**
  * Stream a single CSV file from TRANSACTIONS_PATH.
  * Validates filename to prevent path traversal.
- * TODO(#13): replace stub with real file streaming.
  */
 app.get('/api/transactions/:filename', (req, res) => {
   const { filename } = req.params
 
-  // Path traversal guard
+  // Path traversal guard — reject anything that escapes the transactions dir
   if (
     filename.includes('/') ||
     filename.includes('\\') ||
@@ -84,8 +94,13 @@ app.get('/api/transactions/:filename', (req, res) => {
     return
   }
 
-  // Placeholder — full implementation in #13
-  res.status(501).json({ error: 'Not yet implemented', filename })
+  const filePath = path.join(TRANSACTIONS_PATH, filename)
+  res.setHeader('Content-Type', 'text/csv; charset=windows-1252')
+  res.sendFile(filePath, err => {
+    if (err && !res.headersSent) {
+      res.status(404).json({ error: 'File not found', filename })
+    }
+  })
 })
 
 // ── Static SPA serving ──────────────────────────────────────────────────────
