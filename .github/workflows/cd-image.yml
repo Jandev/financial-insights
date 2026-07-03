@@ -23,6 +23,7 @@ jobs:
       contents: read
       packages: write
       security-events: write   # for SARIF upload to GitHub code scanning
+      actions: read            # for codeql-action/upload-sarif telemetry (required on private repos)
 
     outputs:
       digest: ${{ steps.push.outputs.digest }}
