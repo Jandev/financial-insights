@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Activity,
@@ -9,8 +10,12 @@ import {
   Sparkles,
   CircleUser,
   Settings,
+  Bug,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
+import { useTransactionStore } from '@/store/transactions'
 
 const navItems = [
   { to: '/',              label: 'Dashboard',    Icon: LayoutDashboard },
@@ -29,6 +34,9 @@ const navItems = [
  * Width: 220px (matches design spec).
  */
 export function Sidebar() {
+  const [debugOpen, setDebugOpen] = useState(false)
+  const { fileLog } = useTransactionStore()
+
   return (
     <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 flex w-[220px] flex-col">
       {/* Logo */}
@@ -65,6 +73,60 @@ export function Sidebar() {
           ))}
         </ul>
       </nav>
+
+      {/* Debug panel */}
+      <div className="h-px bg-border" />
+      <div className="px-2 py-1.5">
+        {/* Toggle header */}
+        <button
+          onClick={() => setDebugOpen((o) => !o)}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-[8px] px-3 py-2',
+            'text-[12px] text-text-muted transition-colors duration-150 hover:bg-bg-elevated',
+            debugOpen && 'text-text-secondary',
+          )}
+        >
+          <Bug className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <span className="flex-1 text-left">
+            Debug
+            {fileLog.length > 0 && (
+              <span className="ml-1 text-text-muted">({fileLog.length})</span>
+            )}
+          </span>
+          {debugOpen
+            ? <ChevronDown className="h-3 w-3 shrink-0" strokeWidth={2} />
+            : <ChevronRight className="h-3 w-3 shrink-0" strokeWidth={2} />}
+        </button>
+
+        {/* File log list */}
+        {debugOpen && (
+          <ul className="mt-1 max-h-48 overflow-y-auto space-y-px pb-1">
+            {fileLog.length === 0 ? (
+              <li className="px-3 py-1.5 text-[11px] text-text-muted italic">
+                No files loaded yet
+              </li>
+            ) : (
+              fileLog.map((entry, i) => (
+                <li
+                  key={i}
+                  className="rounded-[6px] px-3 py-1.5 hover:bg-bg-elevated"
+                >
+                  {/* Filename — strip long prefix, keep month part */}
+                  <p
+                    className="truncate font-mono text-[10px] text-text-primary"
+                    title={entry.filename}
+                  >
+                    {entry.filename}
+                  </p>
+                  <p className="text-[10px] text-text-muted">
+                    {entry.rowCount} rows · {formatTime(entry.loadedAt)}
+                  </p>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
 
       {/* Separator */}
       <div className="h-px bg-border" />
