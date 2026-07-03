@@ -1,6 +1,7 @@
 import { Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/store/theme'
+import { useTransactionStore } from '@/store/transactions'
 
 /**
  * Window chrome bar.
@@ -10,10 +11,16 @@ import { useThemeStore } from '@/store/theme'
  *
  * Uses .glass-chrome for the frosted-glass surface.
  * Fixed at top, z-50.
+ *
+ * A 2px progress bar runs along the bottom edge while CSV files are loading.
  */
 export function WindowChrome() {
   const { theme, toggleTheme } = useThemeStore()
   const isDark = theme === 'dark'
+
+  const { status, fileCount, loadedFiles } = useTransactionStore((s) => s.loadingState)
+  const isLoading = status === 'idle' || status === 'loading'
+  const pct = fileCount > 0 ? (loadedFiles / fileCount) * 100 : 0
 
   return (
     <header className="glass-chrome fixed inset-x-0 top-0 z-50 flex h-12 items-center px-4">
@@ -66,6 +73,20 @@ export function WindowChrome() {
             />
           </span>
         </button>
+      </div>
+
+      {/* Loading progress bar — 2px strip along the bottom edge */}
+      <div
+        className={cn(
+          'absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden',
+          'transition-opacity duration-700',
+          isLoading ? 'opacity-100' : 'opacity-0',
+        )}
+      >
+        <div
+          className="h-full bg-accent transition-[width] duration-300 ease-out"
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </header>
   )
