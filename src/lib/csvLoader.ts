@@ -1,4 +1,10 @@
 import { parseFile } from '@/lib/parsers/index'
+import {
+  categorize,
+  mergeRules,
+  readRulesFromStorage,
+  readOverridesFromStorage,
+} from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
 
@@ -138,5 +144,17 @@ async function processFiles(
     errors,
   })
 
-  return all
+  // ── Post-processing: categorization + manual overrides ───────────────────
+  // Done once after all files are parsed so that rule evaluation has access
+  // to the full transaction set (relevant for future cross-transaction rules).
+
+  const customRules = readRulesFromStorage()
+  const rules = mergeRules(customRules)
+  const overrides = readOverridesFromStorage()
+
+  return all.map((tx) => {
+    const ruleCategory = categorize(tx, rules)
+    const category = overrides[tx.id] ?? ruleCategory
+    return category === tx.category ? tx : { ...tx, category }
+  })
 }
