@@ -1,0 +1,24 @@
+# Build artefacts
+node_modules
+dist
+
+# Source control
+.git
+.gitignore
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# User data — never bake CSV files into the image
+data/transactions
+
+# Dev tooling
+.vscode
+.playwright-mcp
+design
+
+# Logs
+*.log
+npm-debug.log*

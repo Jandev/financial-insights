@@ -18,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -39,3 +39,46 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+  docker:
+    name: Docker Build & Scan
+    runs-on: ubuntu-latest
+    needs: build
+
+    permissions:
+      contents: read
+      security-events: write   # for SARIF upload to GitHub code scanning
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (local, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: financial-insights:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        id: trivy
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: financial-insights:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Upload Trivy SARIF to GitHub code scanning
+        if: always()   # upload even when Trivy fails so findings appear in Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
