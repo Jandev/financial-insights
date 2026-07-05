@@ -9,16 +9,18 @@ import {
   type SortingState,
   type PaginationState,
 } from '@tanstack/react-table'
-import { ArrowUpDown, ArrowUp, ArrowDown, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, EyeOff, ChevronLeft, ChevronRight, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDateFull } from '@/lib/utils'
 import { useFilteredTransactions, useStore } from '@/store'
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import type { Transaction } from '@/types/transaction'
+import type { AnomalyFinding } from '@/store/slices/llmSlice'
 import { TypeBadge } from './TypeBadge'
 import { ExclusionToggle } from './ExclusionToggle'
 import { CategoryBadge } from './CategoryBadge'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,14 +35,51 @@ function SortIcon({ isSorted }: { isSorted: false | 'asc' | 'desc' }) {
   return <ArrowUpDown size={12} className="shrink-0 opacity-40" />
 }
 
+// ─── Severity badge ───────────────────────────────────────────────────────────
+
+const SEVERITY_META = {
+  alert:   { Icon: AlertCircle,   cls: 'text-[#FF3B30]' },
+  warning: { Icon: AlertTriangle, cls: 'text-[#FF9500]' },
+  info:    { Icon: Info,          cls: 'text-[#007AFF]' },
+} as const
+
+function FlagCell({ finding }: { finding: AnomalyFinding | undefined }) {
+  if (!finding) return <span className="inline-block w-4" />
+  const { Icon, cls } = SEVERITY_META[finding.severity]
+  const tip = finding.actionSuggestion
+    ? `${finding.title} — ${finding.explanation} ${finding.actionSuggestion}`
+    : `${finding.title} — ${finding.explanation}`
+  return (
+    <Tooltip content={tip}>
+      <span className="flex justify-center cursor-default">
+        <Icon className={cn('h-3.5 w-3.5 shrink-0', cls)} strokeWidth={1.75} />
+      </span>
+    </Tooltip>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TransactionTable() {
   const filteredTxs = useFilteredTransactions()
-  const { excludedIds, restoreFiltered } = useStore(
-    useShallow((s) => ({ excludedIds: s.excludedIds, restoreFiltered: s.restoreFiltered })),
+  const { excludedIds, restoreFiltered, findings, dismissedFindingIds } = useStore(
+    useShallow((s) => ({
+      excludedIds: s.excludedIds,
+      restoreFiltered: s.restoreFiltered,
+      findings: s.findings,
+      dismissedFindingIds: s.dismissedFindingIds,
+    })),
   )
   const { overrides } = useCategoryOverrides()
+
+  // Build lookup: transactionId → finding (only undismissed)
+  const activeFindingByTxId = useMemo(() => {
+    const map = new Map<string, AnomalyFinding>()
+    for (const f of findings) {
+      if (!dismissedFindingIds.has(f.transactionId)) map.set(f.transactionId, f)
+    }
+    return map
+  }, [findings, dismissedFindingIds])
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'date', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({
@@ -55,9 +94,17 @@ export function TransactionTable() {
   )
   const hiddenCount = filteredExcludedIds.length
 
-  // Column definitions — recreated when excludedIds or overrides change
+  // Column definitions — recreated when excludedIds, overrides, or findings change
   const columns = useMemo(
     () => [
+      columnHelper.display({
+        id: 'flag',
+        header: '',
+        size: 32,
+        enableSorting: false,
+        cell: ({ row }) => <FlagCell finding={activeFindingByTxId.get(row.original.id)} />,
+      }),
+
       columnHelper.accessor('date', {
         header: ({ column }) => (
           <button
@@ -218,7 +265,7 @@ export function TransactionTable() {
         ),
       }),
     ],
-    [excludedIds, overrides],
+    [excludedIds, overrides, activeFindingByTxId],
   )
 
   const table = useReactTable({

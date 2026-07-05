@@ -11,6 +11,9 @@
  *   PUT  /api/state/categories           — persist category assignments
  *   GET  /api/state/rules                — load custom category rules
  *   PUT  /api/state/rules                — persist custom rules
+ *   GET  /api/state/dismissed            — load dismissed anomaly finding IDs
+ *   PUT  /api/state/dismissed            — persist dismissed finding IDs
+ *   GET  /api/state/anomalies            — load last anomaly analysis results (read-only)
  *   GET  /api/state/summary              — metadata: which keys exist, lastUpdated, sizes
  *   POST /api/state/reset                — delete all state files
  *
@@ -121,9 +124,49 @@ export function createStateRouter(store: StateStore): Router {
     res.json({ ok: true })
   })
 
-  // ── Summary ────────────────────────────────────────────────────────────────
+  // ── Dismissed finding IDs ─────────────────────────────────────────────────
 
-  /** GET /api/state/summary */
+  /** GET /api/state/dismissed */
+  router.get('/dismissed', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<{ ids: string[] }>('dismissed')
+    if (!data) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    res.json(data)
+  })
+
+  /** PUT /api/state/dismissed */
+  router.put('/dismissed', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !Array.isArray((body as Record<string, unknown>).ids) ||
+      !(body as Record<string, unknown[]>).ids.every((id) => typeof id === 'string')
+    ) {
+      res.status(400).json({ error: 'Body must be { ids: string[] }' })
+      return
+    }
+
+    await store.write('dismissed', { ids: (body as { ids: string[] }).ids })
+    res.json({ ok: true })
+  })
+
+  // ── Anomaly analysis results (read-only) ──────────────────────────────────
+
+  /** GET /api/state/anomalies */
+  router.get('/anomalies', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<{ findings: unknown[]; analyzedAt: string }>('anomalies')
+    if (!data) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    res.json(data)
+  })
+
+  // ── Summary ────────────────────────────────────────────────────────────────
   router.get('/summary', async (_req: Request, res: Response) => {
     const summary = await store.summary()
     const insightPeriods = await store.listInsightPeriods()

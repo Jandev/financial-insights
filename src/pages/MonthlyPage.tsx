@@ -12,7 +12,9 @@ import {
   MonthlyTransactionList,
   type ActiveFilter,
 } from '@/components/monthly/MonthlyTransactionList'
-import { DEFAULT_RULES } from '@/lib/categories'
+import { AIInsightCard } from '@/components/ai/AIInsightCard'
+import { readOverridesFromStorage, type CategoryRule } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
@@ -34,26 +36,29 @@ function pctFmt(value: number, prev: number): string {
 function monthKeyToLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
+  // key uses 1-indexed months (ISO format) — convert to 0-indexed for Date
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m, 1),
+    new Date(y, m - 1, 1),
   )
 }
 
 function monthKeyToShortLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(y, m, 1))
+  // key uses 1-indexed months (ISO format) — convert to 0-indexed for Date
+  return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(y, m - 1, 1))
 }
 
 /** Build category breakdown totals from a list of transactions. */
-function buildCategoryTotals(txns: Transaction[]): {
+function buildCategoryTotals(txns: Transaction[], rules: CategoryRule[]): {
   categoryId: string
   name: string
   color: string
   total: number
   percentage: number
 }[] {
-  const meta = new Map(DEFAULT_RULES.map((r) => [r.id, { name: r.name, color: r.color }]))
+  // Build meta from the full ruleset (covers custom + default rules)
+  const meta = new Map(rules.map((r) => [r.id, { name: r.name, color: r.color }]))
   const map = new Map<string, number>()
 
   for (const tx of txns) {
@@ -143,13 +148,16 @@ export function MonthlyPage() {
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null)
 
-  const { transactions, excludedIds, loadingState } = useStore(
+  const { transactions, excludedIds, loadingState, aiCategories } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       loadingState: s.loadingState,
+      aiCategories: s.aiCategories,
     })),
   )
+
+  const { rules } = useCategoryRules()
 
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
 
@@ -160,11 +168,13 @@ export function MonthlyPage() {
   )
 
   // ── Sorted 'YYYY-MM' keys with at least one transaction ──────────────────
+  // Keys use 1-indexed months (ISO format) so they can be passed directly to
+  // the server (e.g. AIInsightCard calls /api/llm/insights/YYYY-MM).
   const availableMonths = useMemo(() => {
     const set = new Set<string>()
     for (const tx of allActive) {
       const y = tx.date.getFullYear()
-      const m = tx.date.getMonth()
+      const m = tx.date.getMonth() + 1  // 1-indexed → ISO-compatible
       set.add(`${y}-${String(m).padStart(2, '0')}`)
     }
     return [...set].sort()
@@ -209,8 +219,9 @@ export function MonthlyPage() {
   const allMonthTxns = useMemo(() => {
     if (!selectedMonthKey) return []
     const [y, m] = selectedMonthKey.split('-').map(Number)
+    // Key is 1-indexed; Date.getMonth() is 0-indexed
     return transactions.filter(
-      (tx) => tx.date.getFullYear() === y && tx.date.getMonth() === m,
+      (tx) => tx.date.getFullYear() === y && tx.date.getMonth() === m - 1,
     )
   }, [transactions, selectedMonthKey])
 
@@ -220,8 +231,21 @@ export function MonthlyPage() {
     [allMonthTxns, excludedIds],
   )
 
-  const incomeTxns = useMemo(() => monthTxns.filter((tx) => tx.amount > 0), [monthTxns])
-  const expenseTxns = useMemo(() => monthTxns.filter((tx) => tx.amount < 0), [monthTxns])
+  // ── Apply AI category overlay to month transactions ────────────────────────
+  // Manual overrides (already baked into tx.category via recategorize) win over AI.
+  const effectiveMonthTxns = useMemo(() => {
+    const overrides = readOverridesFromStorage()
+    return monthTxns.map((tx) => {
+      const aiCat = aiCategories[tx.id]
+      if (aiCat?.source === 'llm' && !overrides[tx.id]) {
+        return { ...tx, category: aiCat.category }
+      }
+      return tx
+    })
+  }, [monthTxns, aiCategories])
+
+  const incomeTxns = useMemo(() => effectiveMonthTxns.filter((tx) => tx.amount > 0), [effectiveMonthTxns])
+  const expenseTxns = useMemo(() => effectiveMonthTxns.filter((tx) => tx.amount < 0), [effectiveMonthTxns])
 
   // ── KPI totals ────────────────────────────────────────────────────────────
   const totalIncome = useMemo(
@@ -240,8 +264,9 @@ export function MonthlyPage() {
     if (idx <= 0) return null
     const prevKey = availableMonths[idx - 1]
     const [py, pm] = prevKey.split('-').map(Number)
+    // Key is 1-indexed; Date.getMonth() is 0-indexed
     const prevTxns = allActive.filter(
-      (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm,
+      (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm - 1,
     )
     const prevInc = prevTxns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
     const prevExp = prevTxns
@@ -257,12 +282,12 @@ export function MonthlyPage() {
 
   // ── Category totals for pie charts + bar lists ────────────────────────────
   const incomeCategoryTotals = useMemo(
-    () => buildCategoryTotals(incomeTxns),
-    [incomeTxns],
+    () => buildCategoryTotals(incomeTxns, rules),
+    [incomeTxns, rules],
   )
   const expenseCategoryTotals = useMemo(
-    () => buildCategoryTotals(expenseTxns),
-    [expenseTxns],
+    () => buildCategoryTotals(expenseTxns, rules),
+    [expenseTxns, rules],
   )
 
   // ── Donut slice helpers ───────────────────────────────────────────────────
@@ -536,6 +561,14 @@ export function MonthlyPage() {
           )}
         </Card>
       </div>
+
+      {/* ── AI Insight ──────────────────────────────────────────────────────── */}
+      {selectedMonthKey && !isLoading && !isEmpty && (
+        <AIInsightCard
+          period={selectedMonthKey}
+          periodLabel={monthKeyToLabel(selectedMonthKey)}
+        />
+      )}
 
       {/* ── Transaction list ────────────────────────────────────────────────── */}
       <Card padding="lg">
