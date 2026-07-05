@@ -31,14 +31,16 @@ const memory = new MemorySaver()
  * Called by DELETE /api/llm/chat/:threadId so "New conversation" immediately
  * frees memory rather than waiting for a server restart.
  *
- * MemorySaver stores checkpoints in an internal Map keyed by thread_id.
- * Accessing `.storage` is undocumented but stable across LangGraph versions
- * in use — it is a plain `Map<string, Map<string, ...>>`.
+ * MemorySaver stores checkpoints in plain null-prototype objects (storage,
+ * writes) keyed by thread_id — not a Map. Use the delete operator.
  */
 export function clearAdvisorThread(threadId: string): void {
+  // MemorySaver stores checkpoints in plain null-prototype objects keyed by
+  // thread_id — not a Map. Use the delete operator on both storage and writes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const storage = (memory as any).storage as Map<string, unknown> | undefined
-  storage?.delete(threadId)
+  const mem = memory as any
+  if (mem.storage) delete mem.storage[threadId]
+  if (mem.writes) delete mem.writes[threadId]
 }
 
 // ─── Tool helpers ─────────────────────────────────────────────────────────────
