@@ -1,23 +1,29 @@
 /**
  * SettingsPage — /settings
  *
- * Three sections:
- *   1. Spaarpotjes  — CRUD list for named savings accounts
- *   2. Data         — Hard CSV refresh (prod: re-scans filesystem; dev: re-parses loaded files)
- *   3. Danger Zone  — Reset all settings (moved here from Sidebar)
+ * Four sections:
+ *   1. Spaarpotjes      — CRUD list for named savings accounts
+ *   2. Personal Accounts — IBANs marked as internal (pocket money, joint accounts, etc.)
+ *   3. Data             — Hard CSV refresh (prod: re-scans filesystem; dev: re-parses loaded files)
+ *   4. Danger Zone      — Reset all settings (moved here from Sidebar)
  */
 
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Check, X, RefreshCw, AlertTriangle, PiggyBank } from 'lucide-react'
+import {
+  Plus, Pencil, Trash2, Check, X, RefreshCw, AlertTriangle,
+  PiggyBank, ArrowLeftRight, ToggleLeft, ToggleRight,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { useSavingsAccounts } from '@/hooks/useSavingsAccounts'
+import { usePersonalAccounts } from '@/hooks/usePersonalAccounts'
 import { ResetStateDialog } from '@/components/layout/ResetStateDialog'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
 import type { SavingsAccount } from '@/types/savingsAccount'
+import type { PersonalAccount } from '@/types/personalAccount'
 
 // ─── IBAN formatting helper ───────────────────────────────────────────────────
 
@@ -148,6 +154,119 @@ function SpaarpotjeForm({ initial, onSave, onCancel, firstAvailableColor }: Spaa
   )
 }
 
+// ─── Personal Account form (add) ──────────────────────────────────────────────
+
+const ACCOUNT_TYPE_LABELS: Record<PersonalAccount['type'], string> = {
+  payment: 'Payment',
+  savings: 'Savings',
+  joint: 'Joint',
+  other: 'Other',
+}
+
+interface PersonalAccountFormProps {
+  onSave: (values: { iban: string; label: string; type: PersonalAccount['type']; enabled: boolean }) => void
+  onCancel: () => void
+}
+
+function PersonalAccountForm({ onSave, onCancel }: PersonalAccountFormProps) {
+  const [iban, setIban] = useState('')
+  const [label, setLabel] = useState('')
+  const [type, setType] = useState<PersonalAccount['type']>('payment')
+  const [errors, setErrors] = useState<{ iban?: string }>({})
+
+  function validate(): boolean {
+    const next: typeof errors = {}
+    const normalized = normalizeIban(iban)
+    if (!normalized) {
+      next.iban = 'IBAN is required'
+    } else if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalized)) {
+      next.iban = 'Invalid IBAN format'
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validate()) return
+    onSave({ iban: normalizeIban(iban), label: label.trim(), type, enabled: true })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[10px] border border-border bg-bg-elevated p-4 space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {/* IBAN */}
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-text-secondary">IBAN</label>
+          <input
+            type="text"
+            value={iban}
+            onChange={(e) => setIban(e.target.value)}
+            placeholder="NL00RABO0000000000"
+            className={cn(
+              'w-full rounded-[6px] border px-2.5 py-1.5 text-[13px] font-mono',
+              'bg-bg-base text-text-primary placeholder-text-muted',
+              'focus:outline-none focus:ring-1 focus:ring-accent',
+              errors.iban ? 'border-expense' : 'border-border',
+            )}
+          />
+          {errors.iban && <p className="text-[11px] text-expense">{errors.iban}</p>}
+        </div>
+
+        {/* Label */}
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-text-secondary">Label (optional)</label>
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Boodschappenrekening"
+            className={cn(
+              'w-full rounded-[6px] border border-border px-2.5 py-1.5 text-[13px]',
+              'bg-bg-base text-text-primary placeholder-text-muted',
+              'focus:outline-none focus:ring-1 focus:ring-accent',
+            )}
+          />
+        </div>
+      </div>
+
+      {/* Type */}
+      <div className="space-y-1">
+        <label className="text-[11px] font-medium text-text-secondary">Account type</label>
+        <div className="flex gap-1.5 flex-wrap">
+          {(Object.keys(ACCOUNT_TYPE_LABELS) as PersonalAccount['type'][]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setType(t)}
+              className={cn(
+                'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                type === t
+                  ? 'bg-accent text-white'
+                  : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
+              )}
+            >
+              {ACCOUNT_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          <X className="h-3.5 w-3.5" />
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" size="sm">
+          <Check className="h-3.5 w-3.5" />
+          Add account
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
 function Section({ title, description, children }: {
@@ -172,6 +291,7 @@ function Section({ title, description, children }: {
 
 export function SettingsPage() {
   const { accounts, addAccount, updateAccount, deleteAccount } = useSavingsAccounts()
+  const { accounts: personalAccounts, addAccount: addPersonalAccount, updateAccount: updatePersonalAccount, deleteAccount: deletePersonalAccount } = usePersonalAccounts()
   const bumpCsvLoadKey = useStore((s) => s.bumpCsvLoadKey)
   const loadingState = useStore((s) => s.loadingState)
 
@@ -179,6 +299,10 @@ export function SettingsPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Personal accounts add/delete state
+  const [showPersonalAddForm, setShowPersonalAddForm] = useState(false)
+  const [deletingPersonalIban, setDeletingPersonalIban] = useState<string | null>(null)
 
   // Reset dialog
   const [showResetDialog, setShowResetDialog] = useState(false)
@@ -191,7 +315,7 @@ export function SettingsPage() {
   const firstAvailableColor =
     SPAARPOTJE_COLORS.find((c) => !accounts.some((a) => a.color === c)) ?? SPAARPOTJE_COLORS[0]
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Spaarpotje handlers ──────────────────────────────────────────────────────
 
   function handleAdd(values: { name: string; iban: string; color: string }) {
     // Check for duplicate IBAN
@@ -225,6 +349,29 @@ export function SettingsPage() {
     setDeletingId(null)
     toast.success(`"${account?.name}" removed`)
   }
+
+  // ── Personal account handlers ────────────────────────────────────────────────
+
+  function handlePersonalAdd(values: { iban: string; label: string; type: PersonalAccount['type']; enabled: boolean }) {
+    const dup = personalAccounts.find(
+      (a) => a.iban.toLowerCase() === values.iban.toLowerCase(),
+    )
+    if (dup) {
+      toast.error(`IBAN already in personal accounts`)
+      return
+    }
+    addPersonalAccount(values)
+    setShowPersonalAddForm(false)
+    toast.success(`Personal account added`)
+  }
+
+  function handlePersonalDelete(iban: string) {
+    deletePersonalAccount(iban)
+    setDeletingPersonalIban(null)
+    toast.success(`Account removed`)
+  }
+
+  // ── CSV refresh ──────────────────────────────────────────────────────────────
 
   async function handleCsvRefresh() {
     setRefreshing(true)
@@ -260,7 +407,7 @@ export function SettingsPage() {
       {/* ── 1. Spaarpotjes ──────────────────────────────────────────────────── */}
       <Section
         title="Spaarpotjes"
-        description="Register counterparty IBANs as named savings goals. Transfers to/from these IBANs are automatically categorized and tagged."
+        description="Register counterparty IBANs as named savings goals. Transfers to/from these IBANs are automatically categorized and tagged. Spaarpotje movements are excluded from income and expense totals."
       >
         <Card padding="none">
           {accounts.length === 0 && !showAddForm ? (
@@ -373,7 +520,124 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      {/* ── 2. Data ─────────────────────────────────────────────────────────── */}
+      {/* ── 2. Personal Accounts ─────────────────────────────────────────────── */}
+      <Section
+        title="Personal Accounts"
+        description="IBANs you own or share (pocket money, joint grocery account, etc.). Transfers to/from these IBANs are shown as Internal Transfers and still count toward totals."
+      >
+        <Card padding="none">
+          {personalAccounts.length === 0 && !showPersonalAddForm ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-text-muted">
+              <ArrowLeftRight className="h-8 w-8 opacity-40" strokeWidth={1.5} />
+              <p className="text-sm">No personal accounts configured yet.</p>
+              <p className="text-xs text-text-muted/60 max-w-xs text-center">
+                Rabobank own-account transfers (tb) are auto-detected from your CSV files.
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {personalAccounts.map((account) => (
+                <li key={account.iban}>
+                  {deletingPersonalIban === account.iban ? (
+                    <div className="flex items-center gap-3 rounded-[8px] border border-expense/20 bg-expense-dim mx-4 my-2 px-3 py-2.5">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-expense" strokeWidth={2} />
+                      <p className="flex-1 text-[13px] text-text-primary">
+                        Remove <strong className="font-mono">{account.iban}</strong>?
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeletingPersonalIban(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handlePersonalDelete(account.iban)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Icon */}
+                      <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.75} />
+
+                      {/* IBAN + label */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-mono text-text-primary">
+                            {account.iban}
+                          </p>
+                          {account.autoDetected && (
+                            <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                              Auto-detected
+                            </span>
+                          )}
+                          <span className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+                            {ACCOUNT_TYPE_LABELS[account.type]}
+                          </span>
+                        </div>
+                        {account.label && (
+                          <p className="text-[11px] text-text-muted">{account.label}</p>
+                        )}
+                      </div>
+
+                      {/* Enabled toggle */}
+                      <button
+                        onClick={() => updatePersonalAccount(account.iban, { enabled: !account.enabled })}
+                        title={account.enabled ? 'Disable' : 'Enable'}
+                        className="shrink-0 text-text-muted transition-colors hover:text-text-secondary"
+                      >
+                        {account.enabled
+                          ? <ToggleRight className="h-5 w-5 text-accent" strokeWidth={1.75} />
+                          : <ToggleLeft className="h-5 w-5" strokeWidth={1.75} />
+                        }
+                      </button>
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => setDeletingPersonalIban(account.iban)}
+                        title="Remove"
+                        className="shrink-0 rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-expense-dim hover:text-expense"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Add form */}
+          {showPersonalAddForm && (
+            <div className={cn('px-4 pb-4', personalAccounts.length > 0 && 'border-t border-border pt-4')}>
+              <PersonalAccountForm
+                onSave={handlePersonalAdd}
+                onCancel={() => setShowPersonalAddForm(false)}
+              />
+            </div>
+          )}
+
+          {/* Add button */}
+          {!showPersonalAddForm && (
+            <div className={cn('px-4 py-3', personalAccounts.length > 0 && 'border-t border-border')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPersonalAddForm(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add account
+              </Button>
+            </div>
+          )}
+        </Card>
+      </Section>
+
+      {/* ── 3. Data ─────────────────────────────────────────────────────────── */}
       <Section
         title="Data"
         description="Manage CSV transaction data and categorization."
@@ -402,7 +666,7 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      {/* ── 3. Danger Zone ──────────────────────────────────────────────────── */}
+      {/* ── 4. Danger Zone ──────────────────────────────────────────────────── */}
       <Section title="Danger Zone">
         <Card padding="md" className="border-expense/20">
           <div className="flex items-start justify-between gap-4">
@@ -410,7 +674,7 @@ export function SettingsPage() {
               <p className="text-[13px] font-medium text-text-primary">Reset all settings</p>
               <p className="text-[12px] text-text-secondary">
                 Permanently deletes all category assignments, exclusions, custom rules, spaarpotje
-                configuration, and generated insights. CSV files are untouched.
+                configuration, personal accounts, and generated insights. CSV files are untouched.
               </p>
             </div>
             <Button

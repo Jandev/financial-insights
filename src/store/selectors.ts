@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './useStore'
-import { DEFAULT_RULES } from '@/lib/categories'
+import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 import type { Filters } from './slices/filterSlice'
@@ -161,9 +161,9 @@ export function useMonthlyTotals(): MonthlyTotal[] {
       }
 
       const entry = map.get(key)!
-      if (tx.amount > 0) {
+      if (isIncomeTransaction(tx)) {
         entry.income += tx.amount
-      } else {
+      } else if (isExpenseTransaction(tx)) {
         entry.expenses += tx.amount
       }
       entry.net += tx.amount

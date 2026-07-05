@@ -1,10 +1,15 @@
 import { parseFile } from '@/lib/parsers/index'
 import {
   categorize,
+  matchPersonalAccount,
   mergeRules,
   readRulesFromStorage,
   readOverridesFromStorage,
 } from '@/lib/categories'
+import {
+  readPersonalAccountsFromStorage,
+  seedAutoDetectedIbans,
+} from '@/lib/personalAccounts'
 import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
 
@@ -148,13 +153,39 @@ async function processFiles(
   // Done once after all files are parsed so that rule evaluation has access
   // to the full transaction set (relevant for future cross-transaction rules).
 
+  // ── Step 1: Auto-detect personal accounts from Rabobank `tb` transfers ───
+  // Collect unique counterparty IBANs from own-bank-transfer transactions and
+  // seed any unseen ones as auto-detected personal accounts in localStorage.
+  const tbIbans = new Set<string>()
+  for (const tx of all) {
+    if (tx.transactionCode === 'tb' && tx.counterpartyIban) {
+      tbIbans.add(tx.counterpartyIban)
+    }
+  }
+  if (tbIbans.size > 0) {
+    seedAutoDetectedIbans([...tbIbans])
+  }
+
+  // ── Step 2: Build categorization inputs ──────────────────────────────────
   const customRules = readRulesFromStorage()
   const rules = mergeRules(customRules)
   const overrides = readOverridesFromStorage()
+  const personalAccounts = readPersonalAccountsFromStorage()
 
   return all.map((tx) => {
+    // Manual category override wins over all auto-classification
+    const manualOverride = overrides[tx.id]
+    if (manualOverride !== undefined) {
+      return manualOverride === tx.category ? tx : { ...tx, category: manualOverride }
+    }
+
+    // Personal account IBAN match → internal-transfer
+    if (matchPersonalAccount(tx, personalAccounts)) {
+      return tx.category === 'internal-transfer' ? tx : { ...tx, category: 'internal-transfer' }
+    }
+
+    // Rule-engine fallback (includes `tb` → `internal-transfer` via DEFAULT_RULES)
     const ruleCategory = categorize(tx, rules)
-    const category = overrides[tx.id] ?? ruleCategory
-    return category === tx.category ? tx : { ...tx, category }
+    return ruleCategory === tx.category ? tx : { ...tx, category: ruleCategory }
   })
 }
