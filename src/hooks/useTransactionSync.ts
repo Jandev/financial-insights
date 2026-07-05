@@ -5,6 +5,11 @@
  * POST /api/llm/transactions/sync so LLM services (#18-#21) can
  * access them server-side. Also re-syncs when AI categories change.
  *
+ * Option A: Before applying the deduplication guard, checks
+ * GET /api/llm/transactions/count. If the server count doesn't match
+ * the frontend count (e.g. after a server restart that cleared the
+ * in-memory store), the guard is bypassed and a fresh sync is forced.
+ *
  * Silently no-ops if the server is unreachable.
  */
 
@@ -46,21 +51,44 @@ export function useTransactionSync(): void {
     const aiCount = Object.keys(aiCategories).length
     const prev = lastSyncedRef.current
 
-    // Avoid redundant syncs
-    if (prev?.count === transactions.length && prev?.aiCount === aiCount) return
+    async function syncIfNeeded(): Promise<void> {
+      // Option A: check whether the server store matches before trusting the
+      // dedup ref. If counts diverge (e.g. server restarted and in-memory
+      // store is empty or stale), force a re-sync regardless of the ref.
+      if (prev !== null) {
+        try {
+          const res = await fetch('/api/llm/transactions/count')
+          if (res.ok) {
+            const { count: serverCount } = (await res.json()) as { count: number }
+            if (serverCount === transactions.length && prev.count === transactions.length && prev.aiCount === aiCount) {
+              // Server and local are in sync — nothing to do
+              return
+            }
+          }
+        } catch {
+          // Server unreachable — fall through to normal dedup check
+        }
+      }
 
-    lastSyncedRef.current = { count: transactions.length, aiCount }
+      // Avoid redundant syncs when we have no server count data (first mount
+      // or count endpoint failed) and the ref already matches
+      if (prev?.count === transactions.length && prev?.aiCount === aiCount) return
 
-    const snapshots = transactions.map((tx) =>
-      toSnapshot(tx, aiCategories[tx.id]?.category),
-    )
+      lastSyncedRef.current = { count: transactions.length, aiCount }
 
-    fetch('/api/llm/transactions/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactions: snapshots }),
-    }).catch(() => {
-      // Silently ignore — server may not have LLM routes yet
-    })
+      const snapshots = transactions.map((tx) =>
+        toSnapshot(tx, aiCategories[tx.id]?.category),
+      )
+
+      fetch('/api/llm/transactions/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions: snapshots }),
+      }).catch(() => {
+        // Silently ignore — server may not have LLM routes yet
+      })
+    }
+
+    void syncIfNeeded()
   }, [transactions, loadingState.status, aiCategories, serverStateAvailable])
 }

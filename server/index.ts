@@ -46,6 +46,7 @@ import { fileURLToPath } from 'node:url'
 import basicAuth from './middleware/basicAuth.js'
 import { llmRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
+import { loadFromDisk } from './services/transactionStore.js'
 import { createStateRouter } from './routes/state.js'
 import { createLLMRouter } from './routes/llm.js'
 import { createCategorizeRouter } from './routes/categorize.js'
@@ -87,6 +88,7 @@ const app = express()
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(cors())
+app.use('/api/llm/transactions/sync', express.json({ limit: '10mb' }))
 app.use(express.json())
 app.use(basicAuth)
 
@@ -168,7 +170,7 @@ app.use('/api/state', createStateRouter(stateStore))
 // Rate limit applied to all /api/llm/* routes.
 
 app.use('/api/llm', llmRateLimiter)
-app.use('/api/llm', createLLMRouter())
+app.use('/api/llm', createLLMRouter(stateStore))
 app.use('/api/llm', createCategorizeRouter(stateStore))
 app.use('/api/llm', createAnalyzeRouter(stateStore))
 app.use('/api/llm', createInsightsRouter(stateStore))
@@ -197,7 +199,7 @@ app.use(errorHandler)
 
 const server = createServer(app)
 
-void ensureStateDirs()
+void ensureStateDirs().then(() => loadFromDisk(stateStore))
 
 server.listen(PORT, () => {
   console.log(`[server] financial-insights running on port ${PORT} (${NODE_ENV})`)

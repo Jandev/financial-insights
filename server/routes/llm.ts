@@ -2,6 +2,7 @@
  * LLM base routes — issue #17.
  *
  *   GET  /api/llm/status              — LLM availability probe (safe to expose)
+ *   GET  /api/llm/transactions/count  — server-side transaction store count
  *   POST /api/llm/transactions/sync   — Feed the server-side transaction store
  *
  * All /api/llm/* routes share the llmRateLimiter middleware applied in
@@ -10,10 +11,11 @@
 
 import { Router } from 'express'
 import { getLLMInfo } from '../services/llm.js'
-import { setTransactions } from '../services/transactionStore.js'
+import { setTransactions, getCount, getLoadedAt } from '../services/transactionStore.js'
 import type { TxSnapshot } from '../services/transactionStore.js'
+import type { StateStore } from '../services/stateStore.js'
 
-export function createLLMRouter(): Router {
+export function createLLMRouter(stateStore: StateStore): Router {
   const router = Router()
 
   // ── GET /api/llm/status ─────────────────────────────────────────────────────
@@ -30,6 +32,21 @@ export function createLLMRouter(): Router {
       provider: info?.provider ?? null,
       model: info?.model ?? null,
       features: available ? ['categorize', 'anomalies', 'insights', 'chat'] : [],
+    })
+  })
+
+  // ── GET /api/llm/transactions/count ─────────────────────────────────────────
+
+  /**
+   * Returns the number of transactions currently held in the server-side store
+   * and when they were last loaded. The frontend uses this to detect a stale
+   * or empty server store (e.g. after a server restart) and force a re-sync
+   * even when its local deduplication ref says a sync already happened.
+   */
+  router.get('/transactions/count', (_req, res) => {
+    res.json({
+      count: getCount(),
+      loadedAt: getLoadedAt()?.toISOString() ?? null,
     })
   })
 
@@ -53,7 +70,7 @@ export function createLLMRouter(): Router {
     // Light validation — accept and store whatever the client sends;
     // full schema validation happens inside each LLM service.
     const snapshots = body.transactions as TxSnapshot[]
-    setTransactions(snapshots)
+    setTransactions(snapshots, stateStore)
 
     res.json({ synced: snapshots.length })
   })

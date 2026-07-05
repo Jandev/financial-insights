@@ -7,7 +7,14 @@
  *
  * This store deliberately holds a lean snapshot — no IBANs, no raw
  * descriptions beyond what's needed for LLM context.
+ *
+ * Persistence (Option C): setTransactions() asynchronously writes the
+ * snapshot to data/state/transactions.json via StateStore so the store
+ * survives server restarts. loadFromDisk() is called at startup to
+ * pre-populate _transactions before any LLM request arrives.
  */
+
+import type { StateStore } from './stateStore.js'
 
 export interface TxSnapshot {
   id: string
@@ -20,14 +27,41 @@ export interface TxSnapshot {
   category: string      // effective category (AI override or rule-based)
 }
 
+const PERSISTENCE_KEY = 'transactions'
+
 // ─── Module-level store ───────────────────────────────────────────────────────
 
 let _transactions: TxSnapshot[] = []
 let _loadedAt: Date | null = null
 
-export function setTransactions(txs: TxSnapshot[]): void {
+export function setTransactions(txs: TxSnapshot[], stateStore?: StateStore): void {
   _transactions = txs
   _loadedAt = new Date()
+
+  if (stateStore) {
+    // Fire-and-forget — don't block the sync response on disk I/O
+    stateStore.write<TxSnapshot[]>(PERSISTENCE_KEY, txs).catch((err) => {
+      console.warn('[transactionStore] Failed to persist to disk:', err)
+    })
+  }
+}
+
+/**
+ * Load transactions from disk into the in-memory store.
+ * Called once at server startup so the store is pre-populated before
+ * any LLM request arrives (survives server restarts).
+ */
+export async function loadFromDisk(stateStore: StateStore): Promise<void> {
+  try {
+    const txs = await stateStore.read<TxSnapshot[]>(PERSISTENCE_KEY)
+    if (Array.isArray(txs) && txs.length > 0) {
+      _transactions = txs
+      _loadedAt = new Date()
+      console.log(`[transactionStore] Loaded ${txs.length} transactions from disk`)
+    }
+  } catch (err) {
+    console.warn('[transactionStore] Could not load transactions from disk:', err)
+  }
 }
 
 export function getTransactions(): TxSnapshot[] {
