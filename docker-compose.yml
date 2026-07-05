@@ -7,6 +7,10 @@ services:
     volumes:
       # Mount local transactions folder (read-only); CSV files are never baked into the image
       - ./data/transactions:/app/data/transactions:ro
+      # Mount state folder (read-write) so persisted JSON survives container restarts
+      - ./data/state:/app/data/state:rw
+    environment:
+      STATE_PATH: /app/data/state
     env_file:
       - .env
     restart: unless-stopped

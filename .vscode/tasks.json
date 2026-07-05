@@ -15,6 +15,19 @@
       }
     },
     {
+      "label": "dev:full",
+      "type": "npm",
+      "script": "dev:full",
+      "problemMatcher": [],
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "build",
       "type": "npm",
       "script": "build",
@@ -48,6 +61,21 @@
       "script": "lint",
       "problemMatcher": ["$eslint-stylish"],
       "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "test",
+      "type": "npm",
+      "script": "test",
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
       "presentation": {
         "reveal": "always",
         "panel": "shared",
