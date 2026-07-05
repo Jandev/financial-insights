@@ -106,15 +106,25 @@ export function useActiveTransactions(): Transaction[] {
 /**
  * Transactions that pass the active filters, regardless of exclusion.
  * Used by the table (excluded rows are shown at reduced opacity, not hidden).
+ * When `filters.showExcluded` is false, excluded rows are hidden entirely.
  */
 export function useFilteredTransactions(): Transaction[] {
-  const { transactions, filters } = useStore(
-    useShallow((s) => ({ transactions: s.transactions, filters: s.filters })),
+  const { transactions, excludedIds, filters } = useStore(
+    useShallow((s) => ({
+      transactions: s.transactions,
+      excludedIds: s.excludedIds,
+      filters: s.filters,
+    })),
   )
 
   return useMemo(
-    () => transactions.filter((tx) => matchesFilters(tx, filters)),
-    [transactions, filters],
+    () =>
+      transactions.filter((tx) => {
+        if (!matchesFilters(tx, filters)) return false
+        if (!filters.showExcluded && excludedIds.has(tx.id)) return false
+        return true
+      }),
+    [transactions, excludedIds, filters],
   )
 }
 
