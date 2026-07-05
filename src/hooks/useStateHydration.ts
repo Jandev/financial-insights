@@ -13,6 +13,7 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
+import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
 import { setServerAvailable } from '@/lib/serverState'
 import type { AnomalyFinding, AICategoryResult, LLMProvider } from '@/store/slices/llmSlice'
 
@@ -35,11 +36,13 @@ export function useStateHydration(): void {
 
     async function hydrate(): Promise<void> {
       // Fetch all keys in parallel; allSettled never throws
-      const [exclusionsResult, categoriesResult, rulesResult, anomaliesResult, llmStatusResult, dismissedResult, insightsResult] =
+      const [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult, anomaliesResult, llmStatusResult, dismissedResult, insightsResult] =
         await Promise.allSettled([
           fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/categories').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/spaarpotjes').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/tag-overrides').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/anomalies').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/llm/status').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/dismissed').then((r) => (r.ok ? r.json() : null)),
@@ -49,7 +52,7 @@ export function useStateHydration(): void {
       if (cancelled) return
 
       // All non-LLM status calls rejected = Express not running
-      const stateFailed = [exclusionsResult, categoriesResult, rulesResult].every(
+      const stateFailed = [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult].every(
         (r) => r.status === 'rejected',
       )
 
@@ -122,6 +125,18 @@ export function useStateHydration(): void {
       } else if (llmStatusResult.status === 'rejected') {
         // Server reachable but /api/llm/status failed — re-try via action
         void checkLLMStatus()
+      }
+
+      // Hydrate spaarpotjes into localStorage (useSavingsAccounts re-reads via event)
+      if (spaarpotjesResult.status === 'fulfilled' && spaarpotjesResult.value !== null) {
+        const accounts: unknown[] = spaarpotjesResult.value?.data?.accounts ?? []
+        localStorage.setItem(STORAGE_KEY_SPAARPOTJES, JSON.stringify(accounts))
+      }
+
+      // Hydrate tag overrides into localStorage (hooks re-read via event)
+      if (tagOverridesResult.status === 'fulfilled' && tagOverridesResult.value !== null) {
+        const tagOverrides: Record<string, string[]> = tagOverridesResult.value?.data ?? {}
+        localStorage.setItem(STORAGE_KEY_TAG_OVERRIDES, JSON.stringify(tagOverrides))
       }
 
       // Notify hooks to re-read localStorage with the freshly hydrated data

@@ -13,7 +13,7 @@ import {
   type ActiveFilter,
 } from '@/components/monthly/MonthlyTransactionList'
 import { AIInsightCard } from '@/components/ai/AIInsightCard'
-import { readOverridesFromStorage, type CategoryRule } from '@/lib/categories'
+import { readOverridesFromStorage, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -244,8 +244,9 @@ export function MonthlyPage() {
     })
   }, [monthTxns, aiCategories])
 
-  const incomeTxns = useMemo(() => effectiveMonthTxns.filter((tx) => tx.amount > 0), [effectiveMonthTxns])
-  const expenseTxns = useMemo(() => effectiveMonthTxns.filter((tx) => tx.amount < 0), [effectiveMonthTxns])
+  // Spaarpotje deposits/withdrawals are excluded — not real income/expense
+  const incomeTxns = useMemo(() => effectiveMonthTxns.filter(isIncomeTransaction), [effectiveMonthTxns])
+  const expenseTxns = useMemo(() => effectiveMonthTxns.filter(isExpenseTransaction), [effectiveMonthTxns])
 
   // ── KPI totals ────────────────────────────────────────────────────────────
   const totalIncome = useMemo(
@@ -268,9 +269,11 @@ export function MonthlyPage() {
     const prevTxns = allActive.filter(
       (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm - 1,
     )
-    const prevInc = prevTxns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
+    const prevInc = prevTxns
+      .filter(isIncomeTransaction)
+      .reduce((s, t) => s + t.amount, 0)
     const prevExp = prevTxns
-      .filter((t) => t.amount < 0)
+      .filter(isExpenseTransaction)
       .reduce((s, t) => s + Math.abs(t.amount), 0)
     return {
       prevMonthName: monthKeyToShortLabel(prevKey),

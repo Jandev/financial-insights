@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -21,6 +21,13 @@ import { TypeBadge } from './TypeBadge'
 import { ExclusionToggle } from './ExclusionToggle'
 import { CategoryBadge } from './CategoryBadge'
 import { Tooltip } from '@/components/ui/Tooltip'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  /** When set, the table jumps to the page containing this tx ID and highlights the row. */
+  highlightId?: string
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -60,7 +67,7 @@ function FlagCell({ finding }: { finding: AnomalyFinding | undefined }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function TransactionTable() {
+export function TransactionTable({ highlightId }: Props) {
   const filteredTxs = useFilteredTransactions()
   const { excludedIds, restoreFiltered, findings, dismissedFindingIds } = useStore(
     useShallow((s) => ({
@@ -215,11 +222,16 @@ export function TransactionTable() {
         cell: ({ getValue, row }) => {
           const amount = getValue()
           const isExcluded = excludedIds.has(row.original.id)
+          const isInternalTransfer =
+            row.original.category === 'internal-transfer' ||
+            row.original.category === 'own-account-transfer'
           return (
             <span
               className={cn(
                 'block text-right text-sm tabular-nums font-medium',
-                amount > 0 ? 'text-income' : 'text-expense',
+                isInternalTransfer
+                  ? 'text-text-muted'
+                  : amount > 0 ? 'text-income' : 'text-expense',
                 isExcluded && 'line-through',
               )}
             >
@@ -287,6 +299,31 @@ export function TransactionTable() {
   const currentPage = pagination.pageIndex
   const rows = table.getRowModel().rows
 
+  // ── Highlight: refs and effects ──────────────────────────────────────────
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null)
+  const hasJumpedRef = useRef<string | null>(null)
+
+  // Jump to the page that contains the highlighted transaction (once per ID)
+  useEffect(() => {
+    if (!highlightId || hasJumpedRef.current === highlightId) return
+    const sortedRows = table.getSortedRowModel().rows
+    const idx = sortedRows.findIndex((r) => r.original.id === highlightId)
+    if (idx < 0) return
+    hasJumpedRef.current = highlightId
+    table.setPageIndex(Math.floor(idx / PAGE_SIZE))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId, filteredTxs])
+
+  // Scroll the highlighted row into view after the page renders
+  useEffect(() => {
+    if (!highlightId || !highlightRowRef.current) return
+    const el = highlightRowRef.current
+    const timer = setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [highlightId, rows])
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   if (totalRows === 0) {
@@ -340,13 +377,20 @@ export function TransactionTable() {
           <tbody>
             {rows.map((row) => {
               const isExcluded = excludedIds.has(row.original.id)
+              const isHighlighted = row.original.id === highlightId
+              const isInternalTransfer =
+                row.original.category === 'internal-transfer' ||
+                row.original.category === 'own-account-transfer'
               return (
                 <tr
+                  ref={isHighlighted ? highlightRowRef : undefined}
                   key={row.id}
                   className={cn(
-                    'border-b border-border/50 transition-opacity duration-150',
+                    'border-b border-border/50 transition-colors duration-150',
                     'hover:bg-bg-elevated/40',
+                    isInternalTransfer && !isExcluded && 'opacity-60',
                     isExcluded && 'opacity-40 bg-bg-base/50',
+                    isHighlighted && 'bg-accent-dim',
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (

@@ -7,6 +7,7 @@ import { MonthlyPage } from '@/pages/MonthlyPage'
 import { CategoriesPage } from '@/pages/CategoriesPage'
 import { InsightsPage } from '@/pages/InsightsPage'
 import { AiAdvisorPage } from '@/pages/AiAdvisorPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { useStateHydration } from '@/hooks/useStateHydration'
 import { ChatSlideIn } from '@/components/ai/ChatSlideIn'
 
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="insights" element={<InsightsPage />} />
         <Route path="ai-advisor" element={<AiAdvisorPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )
