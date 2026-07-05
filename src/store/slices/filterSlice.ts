@@ -13,6 +13,11 @@ export interface Filters {
   transactionCodes: TransactionCode[]
   amountMin: number | null
   amountMax: number | null
+  /**
+   * When true (default), excluded rows are shown in the table at reduced
+   * opacity. When false, excluded rows are hidden entirely.
+   */
+  showExcluded: boolean
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -23,6 +28,7 @@ export const DEFAULT_FILTERS: Filters = {
   transactionCodes: [],
   amountMin: null,
   amountMax: null,
+  showExcluded: true,
 }
 
 export interface FilterSlice {

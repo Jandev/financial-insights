@@ -26,6 +26,18 @@ export function formatMonth(date: Date): string {
   return new Intl.DateTimeFormat('nl-NL', { month: 'long', year: 'numeric' }).format(date)
 }
 
+/**
+ * Full date for the transaction table: `05 jul. 2026` (dd MMM yyyy, nl-NL).
+ * Pads the day to 2 digits so columns stay aligned.
+ */
+export function formatDateFull(date: Date): string {
+  return new Intl.DateTimeFormat('nl-NL', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
 /** Time-of-day label for the debug panel, e.g. `14:32:07` */
 export function formatTime(date: Date): string {
   return new Intl.DateTimeFormat('nl-NL', {
