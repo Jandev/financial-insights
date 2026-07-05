@@ -42,6 +42,7 @@ function makeTx(overrides: Partial<Transaction> = {}): Transaction {
     originalCurrency: null,
     exchangeRate: null,
     category: '',
+    tags: [],
     isExcluded: false,
     ...overrides,
   }
