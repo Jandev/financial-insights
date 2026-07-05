@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { useTransactionStore } from '@/store/transactions'
+import { useStore } from '@/store'
 import { formatCurrency, formatDate, formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 
@@ -33,7 +33,7 @@ function Bone({ className }: { className: string }) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const { transactions, loadingState } = useTransactionStore()
+  const { transactions, loadingState } = useStore()
 
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
   const hasError = loadingState.status === 'error' && loadingState.errors.length > 0
