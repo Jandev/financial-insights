@@ -139,6 +139,7 @@ function mapRow(raw: RawRabobankRow, sourceFile: string): Transaction | null {
     exchangeRate: exchangeRateStr ? parseAmount(exchangeRateStr) : null,
 
     category: '',
+    tags: [],
     isExcluded: false,
   }
 }

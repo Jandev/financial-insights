@@ -4,22 +4,29 @@ import { useStore } from '@/store'
 import type { LoadingState } from '@/types/loader'
 
 /**
- * Triggers CSV loading on mount and writes results + progress into the store.
- * Loading fires exactly once per app session.
+ * Triggers CSV loading and writes results + progress into the store.
  *
- * Render a <LoadingScreen> while loadingState.status is 'idle' or 'loading';
- * switch to the main layout when it becomes 'success' or 'error'.
+ * Fires once on mount, then again each time `csvLoadKey` is bumped
+ * (via `bumpCsvLoadKey()` — e.g. the "Hard CSV refresh" button in Settings).
+ *
+ * The `hasStartedForKey` ref prevents StrictMode double-execution from
+ * triggering two concurrent loads for the same key.
+ *
+ * In dev (Vite glob), a reload re-parses the same compile-time file set and
+ * applies fresh categorization rules. In prod (Express), `/api/transactions`
+ * re-reads the filesystem so newly added CSV files are picked up.
  *
  * @returns `{ loadingState }` — same object as `useStore().loadingState`
  */
 export function useTransactionLoader() {
-  const { loadingState, setTransactions, setLoadingState, logFile } = useStore()
+  const { loadingState, csvLoadKey, setTransactions, setLoadingState, logFile } = useStore()
 
-  const hasStartedRef = useRef(false)
+  // Tracks which csvLoadKey was last started — prevents double-fire in StrictMode
+  const hasStartedForKey = useRef<number>(-1)
 
   useEffect(() => {
-    if (hasStartedRef.current) return
-    hasStartedRef.current = true
+    if (hasStartedForKey.current === csvLoadKey) return
+    hasStartedForKey.current = csvLoadKey
 
     setLoadingState({
       status: 'loading',
@@ -45,7 +52,7 @@ export function useTransactionLoader() {
           errors: [err instanceof Error ? err.message : String(err)],
         })
       })
-  }, [setTransactions, setLoadingState, logFile])
+  }, [csvLoadKey, setTransactions, setLoadingState, logFile])
 
   return { loadingState }
 }

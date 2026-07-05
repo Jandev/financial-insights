@@ -1,4 +1,5 @@
 import type { Transaction, TransactionCode } from '@/types/transaction'
+import type { SavingsAccount } from '@/types/savingsAccount'
 
 // ─── Condition types ──────────────────────────────────────────────────────────
 
@@ -212,9 +213,32 @@ export const DEFAULT_RULES: CategoryRule[] = [
     patterns: ['huur', 'hypotheek', 'vve ', 'servicekosten'],
   },
   {
+    /**
+     * Spaarpotje deposit — money sent TO a named savings goal.
+     * Applied by recategorize() based on counterpartyIban; never matched
+     * via the rule engine (patterns is intentionally empty).
+     */
+    id: 'spaarpotje',
+    name: 'Spaarpotje',
+    color: '#30B0C7',
+    icon: 'PiggyBank',
+    patterns: [],
+  },
+  {
+    /**
+     * Spaarpotje withdrawal — money received FROM a named savings goal.
+     * NOT counted as income. Applied by recategorize() based on counterpartyIban.
+     */
+    id: 'spaarpotje-withdrawal',
+    name: 'Spaarpotje (opname)',
+    color: '#5856D6',
+    icon: 'PiggyBank',
+    patterns: [],
+  },
+  {
     id: 'own-account-transfer',
     name: 'Own Account Transfer',
-    color: '#5856D6',
+    color: '#8E8E93',
     icon: 'ArrowLeftRight',
     patterns: [],
     transactionCodes: ['tb'],
@@ -360,6 +384,31 @@ export function migrateCustomRule(rule: CategoryRule): CategoryRule {
     icon: rule.icon,
     conditions,
     combinator,
+  }
+}
+
+// ─── Spaarpotje IBAN matcher ──────────────────────────────────────────────────
+
+/**
+ * Check whether a transaction's counterpartyIban matches a registered
+ * spaarpotje. Returns the category + tag if matched, null otherwise.
+ *
+ * Priority: spaarpotje matching runs BEFORE custom rules and DEFAULT_RULES.
+ *
+ * - Outbound (amount < 0): category `spaarpotje`        (money → savings)
+ * - Inbound  (amount > 0): category `spaarpotje-withdrawal` (money ← savings)
+ */
+export function matchSpaarpotje(
+  tx: Transaction,
+  accounts: SavingsAccount[],
+): { category: string; tag: string } | null {
+  if (!accounts.length || !tx.counterpartyIban) return null
+  const needle = tx.counterpartyIban.toLowerCase().trim()
+  const match = accounts.find((a) => a.iban.toLowerCase().trim() === needle)
+  if (!match) return null
+  return {
+    category: tx.amount < 0 ? 'spaarpotje' : 'spaarpotje-withdrawal',
+    tag: match.name,
   }
 }
 

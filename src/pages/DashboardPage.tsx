@@ -10,6 +10,7 @@ import { KpiCard } from '@/components/dashboard/KpiCard'
 import { MonthlyBarChart } from '@/components/dashboard/MonthlyBarChart'
 import { BalanceLineChart } from '@/components/dashboard/BalanceLineChart'
 import { TopExpenses } from '@/components/dashboard/TopExpenses'
+import { SpaarpotjesWidget } from '@/components/dashboard/SpaarpotjesWidget'
 import { formatCurrency } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 
@@ -119,8 +120,9 @@ export function DashboardPage() {
     let inc = 0
     let exp = 0
     for (const tx of monthTxns) {
-      if (tx.amount > 0) inc += tx.amount
-      else exp += Math.abs(tx.amount)
+      // spaarpotje-withdrawal: received FROM savings — not real income, skip
+      if (tx.amount > 0 && tx.category !== 'spaarpotje-withdrawal') inc += tx.amount
+      else if (tx.amount < 0) exp += Math.abs(tx.amount)
     }
     return { totalIncome: inc, totalExpenses: exp, netSavings: inc - exp }
   }, [monthTxns])
@@ -140,8 +142,8 @@ export function DashboardPage() {
     const sum = (arr: Transaction[], pred: (t: Transaction) => boolean) =>
       arr.filter(pred).reduce((s, t) => s + Math.abs(t.amount), 0)
 
-    const curInc  = sum(monthTxns, (t) => t.amount > 0)
-    const prevInc = sum(prevTxns,  (t) => t.amount > 0)
+    const curInc  = sum(monthTxns, (t) => t.amount > 0 && t.category !== 'spaarpotje-withdrawal')
+    const prevInc = sum(prevTxns,  (t) => t.amount > 0 && t.category !== 'spaarpotje-withdrawal')
     const curExp  = sum(monthTxns, (t) => t.amount < 0)
     const prevExp = sum(prevTxns,  (t) => t.amount < 0)
 
@@ -166,8 +168,8 @@ export function DashboardPage() {
       const key = `${y}-${String(m).padStart(2, '0')}`
       if (!map.has(key)) map.set(key, { year: y, month: m, income: 0, expenses: 0 })
       const e = map.get(key)!
-      if (tx.amount > 0) e.income += tx.amount
-      else e.expenses += Math.abs(tx.amount)
+      if (tx.amount > 0 && tx.category !== 'spaarpotje-withdrawal') e.income += tx.amount
+      else if (tx.amount < 0) e.expenses += Math.abs(tx.amount)
     }
     const entries = [...map.values()].sort((a, b) =>
       a.year !== b.year ? a.year - b.year : a.month - b.month,
@@ -337,6 +339,9 @@ export function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Spaarpotjes per-goal balances (only rendered when pots are configured) */}
+      {!isLoading && <SpaarpotjesWidget />}
 
       {/* Main row: bar chart (range) + top expenses (month) */}
       <div className="grid grid-cols-[1fr_280px] gap-4">

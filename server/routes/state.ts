@@ -121,6 +121,67 @@ export function createStateRouter(store: StateStore): Router {
     res.json({ ok: true })
   })
 
+  // ── Spaarpotjes ───────────────────────────────────────────────────────────
+
+  /** GET /api/state/spaarpotjes */
+  router.get('/spaarpotjes', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<{ accounts: unknown[] }>('spaarpotjes')
+    if (!data) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    res.json(data)
+  })
+
+  /** PUT /api/state/spaarpotjes */
+  router.put('/spaarpotjes', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !Array.isArray((body as Record<string, unknown>).accounts)
+    ) {
+      res.status(400).json({ error: 'Body must be { accounts: SavingsAccount[] }' })
+      return
+    }
+
+    await store.write('spaarpotjes', { accounts: (body as { accounts: unknown[] }).accounts })
+    res.json({ ok: true })
+  })
+
+  // ── Tag overrides ──────────────────────────────────────────────────────────
+
+  /** GET /api/state/tag-overrides */
+  router.get('/tag-overrides', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<Record<string, string[]>>('tag-overrides')
+    if (!data) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    res.json(data)
+  })
+
+  /** PUT /api/state/tag-overrides */
+  router.put('/tag-overrides', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      Array.isArray(body) ||
+      !Object.values(body as Record<string, unknown>).every(
+        (v) => Array.isArray(v) && (v as unknown[]).every((t) => typeof t === 'string'),
+      )
+    ) {
+      res.status(400).json({ error: 'Body must be Record<string, string[]>' })
+      return
+    }
+
+    await store.write('tag-overrides', body as Record<string, string[]>)
+    res.json({ ok: true })
+  })
+
   // ── Summary ────────────────────────────────────────────────────────────────
 
   /** GET /api/state/summary */
