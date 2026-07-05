@@ -13,6 +13,7 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
+import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
 import { setServerAvailable } from '@/lib/serverState'
 
 // Dispatched after hydration so hooks re-read localStorage
@@ -28,16 +29,19 @@ export function useStateHydration(): void {
 
     async function hydrate(): Promise<void> {
       // Fetch all keys in parallel; allSettled never throws
-      const [exclusionsResult, categoriesResult, rulesResult] = await Promise.allSettled([
-        fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
-        fetch('/api/state/categories').then((r) => (r.ok ? r.json() : null)),
-        fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
-      ])
+      const [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult] =
+        await Promise.allSettled([
+          fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/categories').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/spaarpotjes').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/tag-overrides').then((r) => (r.ok ? r.json() : null)),
+        ])
 
       if (cancelled) return
 
       // All rejected = network error = Express not running
-      const allFailed = [exclusionsResult, categoriesResult, rulesResult].every(
+      const allFailed = [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult].every(
         (r) => r.status === 'rejected',
       )
 
@@ -68,6 +72,18 @@ export function useStateHydration(): void {
       if (rulesResult.status === 'fulfilled' && rulesResult.value !== null) {
         const rules: unknown[] = rulesResult.value?.data?.rules ?? []
         localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules))
+      }
+
+      // Hydrate spaarpotjes into localStorage (useSavingsAccounts re-reads via event)
+      if (spaarpotjesResult.status === 'fulfilled' && spaarpotjesResult.value !== null) {
+        const accounts: unknown[] = spaarpotjesResult.value?.data?.accounts ?? []
+        localStorage.setItem(STORAGE_KEY_SPAARPOTJES, JSON.stringify(accounts))
+      }
+
+      // Hydrate tag overrides into localStorage (hooks re-read via event)
+      if (tagOverridesResult.status === 'fulfilled' && tagOverridesResult.value !== null) {
+        const tagOverrides: Record<string, string[]> = tagOverridesResult.value?.data ?? {}
+        localStorage.setItem(STORAGE_KEY_TAG_OVERRIDES, JSON.stringify(tagOverrides))
       }
 
       // Notify hooks to re-read localStorage with the freshly hydrated data

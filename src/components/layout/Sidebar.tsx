@@ -13,13 +13,11 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
-  Trash2,
   Cloud,
   HardDrive,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { useStore } from '@/store'
-import { ResetStateDialog } from './ResetStateDialog'
 
 const navItems = [
   { to: '/',              label: 'Dashboard',    Icon: LayoutDashboard },
@@ -39,7 +37,6 @@ const navItems = [
  */
 export function Sidebar() {
   const [debugOpen, setDebugOpen] = useState(false)
-  const [resetOpen, setResetOpen] = useState(false)
   const { fileLog, serverStateAvailable } = useStore()
 
   return (
@@ -133,13 +130,10 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Reset state dialog (shown inline above the footer) */}
-      {resetOpen && <ResetStateDialog onClose={() => setResetOpen(false)} />}
-
       {/* Separator */}
       <div className="h-px bg-border" />
 
-      {/* Footer: storage indicator + user + reset */}
+      {/* Footer: storage indicator + user + settings link */}
       <div className="px-3 py-2.5 space-y-2">
         {/* Storage mode indicator */}
         <div className="flex items-center gap-1.5">
@@ -156,27 +150,26 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* User row + reset trigger */}
+        {/* User row + settings link */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CircleUser className="h-5 w-5 text-text-secondary" strokeWidth={1.75} />
             <span className="text-xs text-text-secondary">Jan de Vries</span>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setResetOpen((o) => !o)}
-              title="Reset all state"
-              className={cn(
+          <NavLink
+            to="/settings"
+            title="Settings"
+            className={({ isActive }) =>
+              cn(
                 'rounded-[6px] p-1 transition-colors',
-                resetOpen
-                  ? 'bg-red-500/10 text-red-500'
+                isActive
+                  ? 'bg-accent-dim text-accent'
                   : 'text-text-muted hover:bg-bg-elevated hover:text-text-secondary',
-              )}
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-            </button>
-            <Settings className="h-3.5 w-3.5 text-text-muted" strokeWidth={1.75} />
-          </div>
+              )
+            }
+          >
+            <Settings className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </NavLink>
         </div>
       </div>
     </aside>
