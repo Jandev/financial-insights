@@ -9,6 +9,7 @@ import { InsightsPage } from '@/pages/InsightsPage'
 import { AiAdvisorPage } from '@/pages/AiAdvisorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { useStateHydration } from '@/hooks/useStateHydration'
+import { ChatSlideIn } from '@/components/ai/ChatSlideIn'
 
 function AppRoutes() {
   // Hydrate Zustand + localStorage from server on mount (issue #22).
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppRoutes />
+      <ChatSlideIn />
       <Toaster position="bottom-right" richColors closeButton />
     </BrowserRouter>
   )

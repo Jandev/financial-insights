@@ -1,17 +1,75 @@
 # Financial Insights
 
-A personal finance dashboard for analyzing Rabobank transaction data. Visualizes spending patterns, income vs. expenses, and category breakdowns across monthly CSV exports.
+A personal finance dashboard for analyzing Rabobank transaction data. Visualizes spending patterns, income vs. expenses, and category breakdowns across monthly CSV exports. Includes an AI Advisor powered by Azure OpenAI / LangChain.
 
 ## What it does
 
 - Parses Dutch Rabobank CSV exports (`CSV_A_*.csv`)
 - Dashboard with KPI cards: balance, income, expenses, net savings
-- Monthly income vs. expenses bar chart
-- Transaction table with filtering and sorting
-- Category breakdown and top expenses
-- AI Advisor (planned)
+- Monthly overview with income/expense breakdown, category donuts, and month-over-month deltas
+- Transaction table with filtering, sorting, and category overrides
+- Insights page — top merchants, biggest transactions, monthly spend trend, income vs savings rate
+- Named savings goals (Spaarpotjes) — track deposits/withdrawals per named pot
+- Internal transfer detection — own-account transfers excluded from income/expense automatically
+- Category breakdown with custom rules and tag support
+- State persistence across sessions via server-side JSON store
+- **AI Categorization** — LLM assigns/corrects categories in bulk
+- **Anomaly Detection** — statistical + LLM-explained unusual transactions
+- **AI Monthly Insights** — streaming narrative summaries per month
+- **AI Advisor chat** — conversational financial advisor with 6 tools
 
-Data covers account `NL00RABO0000000000`, 25 months (Jun 2024 – Jun 2026). CSV files are gitignored — place your own exports in `data/transactions/`.
+Place your own Rabobank CSV exports in `data/transactions/`.
+
+---
+
+## AI Features
+
+All AI features require an Azure OpenAI (or OpenAI-compatible) endpoint and the full-stack dev server.
+
+### Setup
+
+1. Copy `.env.example` to `.env` and fill in the Azure OpenAI credentials:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+
+| Variable | Example | Description |
+|---|---|---|
+| `AZURE_OPENAI_ENDPOINT` | `https://sp-coding.cognitiveservices.azure.com/` | Azure OpenAI resource endpoint |
+| `AZURE_OPENAI_API_KEY` | `sk-...` | API key from Azure Portal |
+| `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Deployment name |
+| `AZURE_OPENAI_API_VERSION` | `2025-01-01-preview` | **Must be `2025-01-01-preview`** for LangGraph tool-calling |
+
+> **Note:** Use the `cognitiveservices.azure.com` endpoint (Foundry format), not the older `openai.azure.com` format.
+
+2. Start the full-stack server (Vite + Express together):
+
+```bash
+npm run dev:full
+```
+
+Vite runs on `http://localhost:5173`, Express on `http://localhost:3000`. Vite proxies all `/api/*` requests to Express automatically.
+
+### AI feature locations
+
+| Feature | Where |
+|---|---|
+| AI Categorize | Categories page → "AI Categorize" button in header |
+| Anomaly Alerts | Insights page |
+| Monthly AI Insight | Monthly Overview page → streaming card below category charts |
+| AI Advisor (full page) | `/ai-advisor` route |
+| AI Advisor (chat panel) | Floating button bottom-right on all pages |
+
+### Optional: LangSmith tracing
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=ls__...
+LANGSMITH_PROJECT=financial-insights
+```
 
 ---
 
@@ -47,9 +105,14 @@ make logs    # tail logs
 make build   # docker build only
 ```
 
-### Volume mount
+### Volume mounts
 
-`./data/transactions` on the host is mounted read-only at `/app/data/transactions` inside the container. The image contains no CSV data.
+| Host path | Container path | Mode | Purpose |
+|---|---|---|---|
+| `./data/transactions` | `/app/data/transactions` | read-only | Rabobank CSV exports |
+| `./data/state` | `/app/data/state` | read-write | Persisted state (categories, rules, anomalies, insights) |
+
+The image contains no CSV data. State survives container restarts via the `data/state` volume.
 
 ### Environment variables
 
@@ -58,16 +121,22 @@ make build   # docker build only
 | `PORT` | `3000` | Port the Express server listens on |
 | `NODE_ENV` | `production` | Node environment |
 | `TRANSACTIONS_PATH` | `/app/data/transactions` | Path to CSV files inside container |
+| `STATE_PATH` | `/app/data/state` | Path to state JSON files inside container |
 | `APP_TITLE` | `Financial Insights` | Page title |
 | `BASIC_AUTH_USER` | _(empty)_ | HTTP Basic Auth username — leave blank to disable |
 | `BASIC_AUTH_PASS` | _(empty)_ | HTTP Basic Auth password — leave blank to disable |
-| `OPENAI_API_KEY` | _(empty)_ | OpenAI key for future AI features |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model name |
-| `AZURE_OPENAI_ENDPOINT` | _(empty)_ | Azure OpenAI endpoint (alternative to OpenAI) |
+| `AZURE_OPENAI_ENDPOINT` | _(empty)_ | Azure OpenAI endpoint (`cognitiveservices.azure.com` format) |
 | `AZURE_OPENAI_API_KEY` | _(empty)_ | Azure OpenAI key |
-| `AZURE_OPENAI_DEPLOYMENT` | _(empty)_ | Azure OpenAI deployment name |
-| `AZURE_OPENAI_API_VERSION` | `2024-02-01` | Azure OpenAI API version |
+| `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Azure OpenAI deployment name |
+| `AZURE_OPENAI_API_VERSION` | `2025-01-01-preview` | Must be `2025-01-01-preview` for tool-calling |
+| `OPENAI_API_KEY` | _(empty)_ | OpenAI direct key (fallback when Azure vars absent) |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model name for direct OpenAI |
+| `LLM_TEMPERATURE` | `0.3` | LLM sampling temperature |
+| `LLM_MAX_TOKENS` | `1024` | Max tokens per LLM response |
+| `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
+| `LANGSMITH_API_KEY` | _(empty)_ | LangSmith API key |
+| `LANGSMITH_PROJECT` | `financial-insights` | LangSmith project name |
 
 See `.env.example` for the full documented template.
 
@@ -158,7 +227,12 @@ Requires Node.js 22+ and npm 10+.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173  (Vite, hot-reload)
+
+# UI only (no AI features)
+npm run dev        # http://localhost:5173
+
+# Full stack (UI + AI features)
+npm run dev:full   # Vite on :5173, Express on :3000
 ```
 
 Other scripts:
@@ -185,6 +259,7 @@ npm run lint       # ESLint
 | CSV parsing | PapaParse |
 | Icons | Lucide React |
 | Utilities | clsx, tailwind-merge, date-fns |
+| AI | LangChain + LangGraph + Azure OpenAI |
 
 ## Project structure
 
@@ -192,17 +267,21 @@ npm run lint       # ESLint
 financial-insights/
 ├── data/transactions/     # Rabobank CSV exports (gitignored, volume-mounted in Docker)
 ├── server/
-│   ├── index.js           # Express server (static + API)
-│   └── middleware/
-│       └── basicAuth.js   # HTTP Basic Auth (issue #14)
+│   ├── index.ts           # Express server (static + API)
+│   ├── routes/            # llm, categorize, analyze, insights, chat
+│   ├── services/          # llm, advisor, transactionStore, insightBuilder, anomalyDetector
+│   ├── middleware/        # basicAuth, rateLimiter
+│   └── lib/               # sse helper
 ├── design/                # Penpot source file + screen mockups
 ├── src/
 │   ├── components/
+│   │   ├── ai/            # ChatInterface, ChatSlideIn, AICategorizeButton, AnomalyAlerts, AIInsightCard, LLMGate
 │   │   ├── ui/            # Base components (Card, Badge, Button)
 │   │   └── layout/        # Shell components (Layout, Sidebar, WindowChrome)
 │   ├── pages/             # Route-level page components
-│   ├── lib/               # Utilities (CSV parsing, formatters, etc.)
-│   ├── store/             # Zustand state stores
+│   ├── lib/               # Utilities (CSV parsing, formatters, uuid, etc.)
+│   ├── hooks/             # useStateHydration, useTransactionSync, useCategoryRules
+│   ├── store/             # Zustand store (slices: transactions, ui, llm)
 │   └── types/             # Shared TypeScript types
 ├── .env.example           # Environment variable template
 ├── docker-compose.yml

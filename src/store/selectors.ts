@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './useStore'
-import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
+import { DEFAULT_RULES, readOverridesFromStorage, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 import type { Filters } from './slices/filterSlice'
@@ -21,11 +22,11 @@ export interface MonthlyTotal {
 
 export interface CategoryTotal {
   categoryId: string
-  /** Display name from DEFAULT_RULES (falls back to categoryId) */
+  /** Display name from rules (falls back to categoryId) */
   name: string
-  /** Hex color from DEFAULT_RULES (falls back to #8E8E93) */
+  /** Hex color from rules (falls back to #8E8E93) */
   color: string
-  /** Lucide icon name from DEFAULT_RULES (falls back to 'HelpCircle') */
+  /** Lucide icon name from rules (falls back to 'HelpCircle') */
   icon: string
   /** Sum of absolute amounts for active transactions in this category */
   total: number
@@ -75,58 +76,95 @@ export function matchesFilters(tx: Transaction, filters: Filters): boolean {
   return true
 }
 
-/** Build a lookup map from categoryId → rule metadata from DEFAULT_RULES. */
-function buildCategoryMeta(): Map<string, { name: string; color: string; icon: string }> {
-  return new Map(DEFAULT_RULES.map((r) => [r.id, { name: r.name, color: r.color, icon: r.icon }]))
+/** Build a lookup map from categoryId → rule metadata. Covers custom + default rules. */
+function buildCategoryMeta(rules: CategoryRule[]): Map<string, { name: string; color: string; icon: string }> {
+  return new Map(rules.map((r) => [r.id, { name: r.name, color: r.color, icon: r.icon }]))
+}
+
+/**
+ * Apply the AI category overlay to a transaction.
+ *
+ * Priority order:
+ *   1. Manual override (already baked into tx.category via recategorize()) — wins
+ *   2. AI category (from aiCategories overlay) — applied when no manual override
+ *   3. Rule-based category (tx.category) — fallback
+ *
+ * Manual overrides are detected by reading categoryOverrides from localStorage.
+ * This is synchronous and cheap. Reactivity is ensured because recategorize()
+ * always triggers a store update → useMemo dependency changes → fresh read.
+ */
+function applyAIOverlay(
+  tx: Transaction,
+  aiCategories: Record<string, { category: string; source: 'llm' | 'rule' }>,
+  overrides: Record<string, string>,
+): Transaction {
+  const aiCat = aiCategories[tx.id]
+  if (aiCat?.source === 'llm' && !overrides[tx.id]) {
+    return { ...tx, category: aiCat.category }
+  }
+  return tx
 }
 
 // ─── Derived selector hooks ───────────────────────────────────────────────────
 
 /**
  * Transactions that pass the active filters AND are not excluded.
+ * AI category overlay is applied: aiCategories[tx.id] overrides tx.category
+ * unless the transaction has a manual category override.
  * Used by charts and KPI cards.
  */
 export function useActiveTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters } = useStore(
+  const { transactions, excludedIds, filters, aiCategories } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       filters: s.filters,
+      aiCategories: s.aiCategories,
     })),
   )
 
-  return useMemo(
-    () =>
-      transactions.filter(
-        (tx) => !excludedIds.has(tx.id) && matchesFilters(tx, filters),
-      ),
-    [transactions, excludedIds, filters],
-  )
+  return useMemo(() => {
+    const overrides = readOverridesFromStorage()
+    return transactions
+      .filter((tx) => !excludedIds.has(tx.id))
+      .map((tx) => applyAIOverlay(tx, aiCategories, overrides))
+      .filter((tx) => matchesFilters(tx, filters))
+  }, [transactions, excludedIds, filters, aiCategories])
 }
 
 /**
  * Transactions that pass the active filters, regardless of exclusion.
  * Used by the table (excluded rows are shown at reduced opacity, not hidden).
  * When `filters.showExcluded` is false, excluded rows are hidden entirely.
+ * AI category overlay is applied consistently with useActiveTransactions.
  */
 export function useFilteredTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters } = useStore(
+  const { transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       filters: s.filters,
+      aiCategories: s.aiCategories,
+      findings: s.findings,
+      dismissedFindingIds: s.dismissedFindingIds,
     })),
   )
 
-  return useMemo(
-    () =>
-      transactions.filter((tx) => {
+  return useMemo(() => {
+    const overrides = readOverridesFromStorage()
+    // Build active finding ID set once for O(1) lookup
+    const activeFlaggedIds = filters.showFlaggedOnly
+      ? new Set(findings.filter((f) => !dismissedFindingIds.has(f.transactionId)).map((f) => f.transactionId))
+      : null
+    return transactions
+      .map((tx) => applyAIOverlay(tx, aiCategories, overrides))
+      .filter((tx) => {
         if (!matchesFilters(tx, filters)) return false
         if (!filters.showExcluded && excludedIds.has(tx.id)) return false
+        if (activeFlaggedIds && !activeFlaggedIds.has(tx.id)) return false
         return true
-      }),
-    [transactions, excludedIds, filters],
-  )
+      })
+  }, [transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds])
 }
 
 /** Number of currently excluded transactions. */
@@ -177,14 +215,15 @@ export function useMonthlyTotals(): MonthlyTotal[] {
 
 /**
  * Active transactions grouped by category, sorted descending by total spend.
- * Enriched with name / color / icon from DEFAULT_RULES.
+ * Enriched with name / color / icon from the full ruleset (custom + default).
  * `percentage` is relative to the sum of ALL category totals.
  */
 export function useCategoryTotals(): CategoryTotal[] {
   const active = useActiveTransactions()
+  const { rules } = useCategoryRules()
 
   return useMemo(() => {
-    const meta = buildCategoryMeta()
+    const meta = buildCategoryMeta(rules)
     const map = new Map<string, { total: number; count: number }>()
 
     for (const tx of active) {
@@ -210,7 +249,7 @@ export function useCategoryTotals(): CategoryTotal[] {
     })
 
     return totals.sort((a, b) => b.total - a.total)
-  }, [active])
+  }, [active, rules])
 }
 
 /**
@@ -239,6 +278,9 @@ export function useBalanceSeries(): BalanceSeries[] {
     return [...byIban.entries()].map(([iban, points]) => ({ iban, points }))
   }, [transactions, excludedIds])
 }
+
+// Keep DEFAULT_RULES re-exported for any consumers that still reference it
+export { DEFAULT_RULES }
 
 // ─── Spaarpotje balance selectors ─────────────────────────────────────────────
 
