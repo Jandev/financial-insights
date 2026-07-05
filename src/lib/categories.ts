@@ -1,5 +1,29 @@
 import type { Transaction, TransactionCode } from '@/types/transaction'
 
+// ─── Condition types ──────────────────────────────────────────────────────────
+
+/** Fields available for condition-based rule matching */
+export type ConditionField = 'description' | 'counterpartyIban' | 'direction' | 'amount'
+
+/** Operators available per field type */
+export type ConditionOperator =
+  | 'contains'   // text: substring match
+  | 'equals'     // text: exact match (case-insensitive)
+  | 'startsWith' // text: prefix match
+  | 'is'         // direction: 'credit' | 'debit'
+  | 'gte'        // amount: >= threshold
+  | 'lte'        // amount: <= threshold
+
+/** A single matching condition used in the new rule system */
+export interface Condition {
+  /** Stable id for React reconciliation */
+  id: string
+  field: ConditionField
+  operator: ConditionOperator
+  /** Always stored as string; parsed to number for amount comparisons */
+  value: string
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CategoryRule {
@@ -10,12 +34,20 @@ export interface CategoryRule {
   color: string
   /** Lucide icon name */
   icon: string
+
+  // ── New condition-based matching (custom rules) ───────────────────────────
+  /** Structured conditions — evaluated with `combinator`. Takes priority over legacy fields. */
+  conditions?: Condition[]
+  /** How multiple conditions are combined. Defaults to 'and'. */
+  combinator?: 'and' | 'or'
+
+  // ── Legacy pattern-based matching (DEFAULT_RULES) ─────────────────────────
   /**
    * Case-insensitive substrings matched against
    * `counterpartyName + ' ' + description`.
    * An empty array means "match nothing via pattern" — use other filters only.
    */
-  patterns: string[]
+  patterns?: string[]
   /** When set, rule only fires for these transaction codes */
   transactionCodes?: TransactionCode[]
   /** When set, rule only fires when |amount| >= amountMin */
@@ -197,46 +229,96 @@ export const DEFAULT_RULES: CategoryRule[] = [
   },
 ]
 
+// ─── Condition evaluator ──────────────────────────────────────────────────────
+
+function evaluateCondition(tx: Transaction, cond: Condition): boolean {
+  const { field, operator, value } = cond
+
+  switch (field) {
+    case 'description': {
+      const haystack = `${tx.counterpartyName} ${tx.description}`.toLowerCase()
+      const needle = value.toLowerCase()
+      if (operator === 'contains')   return haystack.includes(needle)
+      if (operator === 'equals')     return haystack.trim() === needle.trim()
+      if (operator === 'startsWith') return haystack.startsWith(needle)
+      return false
+    }
+    case 'counterpartyIban': {
+      const iban = tx.counterpartyIban.toLowerCase()
+      const needle = value.toLowerCase()
+      if (operator === 'contains')   return iban.includes(needle)
+      if (operator === 'equals')     return iban === needle
+      if (operator === 'startsWith') return iban.startsWith(needle)
+      return false
+    }
+    case 'direction': {
+      if (operator === 'is') {
+        const txIsCredit = tx.amount > 0
+        return value === 'credit' ? txIsCredit : !txIsCredit
+      }
+      return false
+    }
+    case 'amount': {
+      const absAmount = Math.abs(tx.amount)
+      const threshold = parseFloat(value)
+      if (isNaN(threshold)) return false
+      if (operator === 'gte') return absAmount >= threshold
+      if (operator === 'lte') return absAmount <= threshold
+      return false
+    }
+    default:
+      return false
+  }
+}
+
 // ─── Core categorization function ─────────────────────────────────────────────
 
 /**
  * Assign a category id to a single transaction.
  *
- * Evaluation order:
- *  1. For each rule (in array order):
- *     a. Check `transactionCodes` filter (if set)
- *     b. Check `isCredit` filter (if set)
- *     c. Check `amountMin` filter (if set)
- *     d. Check pattern match against `counterpartyName + ' ' + description`
- *  2. First rule whose every applicable filter passes → return `rule.id`
- *  3. If no rule matched → return `'uncategorized'`
+ * For each rule (in order), two matching strategies are supported:
+ *
+ * **New — condition-based** (custom rules created via the Rule Editor):
+ *   If the rule has `conditions` (non-empty), all conditions are evaluated
+ *   using the rule's `combinator` ('and' | 'or'). First matching rule wins.
+ *
+ * **Legacy — pattern-based** (DEFAULT_RULES):
+ *   Falls back to the original transactionCodes / isCredit / amountMin /
+ *   patterns evaluation when `conditions` is absent or empty.
  *
  * Designed for sync, rule-based use today.
  * Future: an async LLM-based replacement can drop in with the same signature
  * returning `Promise<string>` — callers need only await the result.
  */
 export function categorize(tx: Transaction, rules: CategoryRule[]): string {
-  const haystack = `${tx.counterpartyName} ${tx.description}`.toLowerCase()
-
   for (const rule of rules) {
-    // ── transactionCodes filter ──────────────────────────────────────────────
+    // ── New: condition-based evaluation ─────────────────────────────────────
+    if (rule.conditions && rule.conditions.length > 0) {
+      const combinator = rule.combinator ?? 'and'
+      const matches =
+        combinator === 'and'
+          ? rule.conditions.every((c) => evaluateCondition(tx, c))
+          : rule.conditions.some((c) => evaluateCondition(tx, c))
+      if (matches) return rule.id
+      continue
+    }
+
+    // ── Legacy: pattern-based evaluation ────────────────────────────────────
     if (rule.transactionCodes && rule.transactionCodes.length > 0) {
       if (!rule.transactionCodes.includes(tx.transactionCode)) continue
     }
 
-    // ── isCredit filter ──────────────────────────────────────────────────────
     if (rule.isCredit !== undefined) {
       const txIsCredit = tx.amount > 0
       if (rule.isCredit !== txIsCredit) continue
     }
 
-    // ── amountMin filter ─────────────────────────────────────────────────────
     if (rule.amountMin !== undefined) {
       if (Math.abs(tx.amount) < rule.amountMin) continue
     }
 
-    // ── pattern match ────────────────────────────────────────────────────────
-    if (rule.patterns.length > 0) {
+    if (rule.patterns && rule.patterns.length > 0) {
+      const haystack = `${tx.counterpartyName} ${tx.description}`.toLowerCase()
       const matched = rule.patterns.some((p) => haystack.includes(p.toLowerCase()))
       if (!matched) continue
     }
@@ -246,6 +328,39 @@ export function categorize(tx: Transaction, rules: CategoryRule[]): string {
   }
 
   return 'uncategorized'
+}
+
+// ─── Rule migration utility ───────────────────────────────────────────────────
+
+/**
+ * Migrate a legacy custom rule (patterns-based) to the new condition format.
+ * Rules that already have `conditions` are returned unchanged.
+ *
+ * Called by `useCategoryRules` on load from localStorage so old rules are
+ * automatically upgraded when the user next opens the app.
+ */
+export function migrateCustomRule(rule: CategoryRule): CategoryRule {
+  // Already uses new condition system — nothing to do
+  if (rule.conditions !== undefined) return rule
+
+  const conditions: Condition[] = (rule.patterns ?? []).map((p, i) => ({
+    id: `migrated-${rule.id}-${i}`,
+    field: 'description' as ConditionField,
+    operator: 'contains' as ConditionOperator,
+    value: p,
+  }))
+
+  // Multiple patterns were OR'd together in the legacy engine
+  const combinator: 'and' | 'or' = conditions.length > 1 ? 'or' : 'and'
+
+  return {
+    id: rule.id,
+    name: rule.name,
+    color: rule.color,
+    icon: rule.icon,
+    conditions,
+    combinator,
+  }
 }
 
 // ─── Storage utilities (non-React — safe to call from csvLoader) ──────────────
