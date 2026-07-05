@@ -135,17 +135,20 @@ export const createLLMSlice: StateCreator<StoreState, [], [], LLMSlice> = (set, 
   setFindings: (findings) => set({ findings }),
 
   dismissFinding: (id) => {
-    set((s) => ({ dismissedFindingIds: new Set([...s.dismissedFindingIds, id]) }))
-    debouncePut('dismissed', { ids: [...get().dismissedFindingIds] })
+    set((s) => {
+      const next = new Set([...s.dismissedFindingIds, id])
+      debouncePut('dismissed', { ids: [...next] })
+      return { dismissedFindingIds: next }
+    })
   },
 
   restoreFinding: (id) => {
     set((s) => {
       const next = new Set(s.dismissedFindingIds)
       next.delete(id)
+      debouncePut('dismissed', { ids: [...next] })
       return { dismissedFindingIds: next }
     })
-    debouncePut('dismissed', { ids: [...get().dismissedFindingIds] })
   },
 
   setDismissedFindingIds: (ids) =>
