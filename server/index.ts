@@ -154,6 +154,7 @@ app.get('*', (_req, res) => {
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error('[server] unhandled error:', err)
   res.status(500).json({ error: 'Internal server error' })

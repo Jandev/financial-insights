@@ -218,7 +218,6 @@ export function TransactionTable() {
         ),
       }),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [excludedIds, overrides],
   )
 

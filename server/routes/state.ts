@@ -22,10 +22,6 @@ import { Router } from 'express'
 import type { Request, Response } from 'express'
 import type { StateStore } from '../services/stateStore.js'
 
-// ─── Safe period pattern for insight routes (future) ─────────────────────────
-// YYYY-MM or YYYY — only alphanumeric and dash
-const SAFE_PERIOD_RE = /^[0-9]{4}(-[0-9]{2})?$/
-
 export function createStateRouter(store: StateStore): Router {
   const router = Router()
 
