@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Card } from '@/components/ui/Card'
+import { cn } from '@/lib/utils'
 import { useActiveTransactions } from '@/store/selectors'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useStore } from '@/store'
@@ -8,6 +9,7 @@ import type { CategoryTotal } from '@/store/selectors'
 import { CategoryBarChart } from '@/components/categories/CategoryBarChart'
 import { DrilldownPanel } from '@/components/categories/DrilldownPanel'
 import { RuleEditor } from '@/components/categories/RuleEditor'
+import { AICategorizeButton } from '@/components/ai/AICategorizeButton'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,8 +52,27 @@ export function CategoriesPage() {
   const { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults } =
     useCategoryRules()
   const recategorize = useStore((s) => s.recategorize)
+  const aiCategories = useStore((s) => s.aiCategories)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showAIOnly, setShowAIOnly] = useState(false)
+
+  // Whether any AI-categorized transactions exist in the current set
+  const hasAiCategories = useMemo(
+    () => Object.values(aiCategories).some((v) => v.source === 'llm'),
+    [aiCategories],
+  )
+
+  // Auto-clear AI-only filter when AI categories are removed
+  useEffect(() => {
+    if (!hasAiCategories) setShowAIOnly(false)
+  }, [hasAiCategories])
+
+  // When showAIOnly is on, restrict to AI-categorized transactions only
+  const displayTransactions = useMemo(
+    () => showAIOnly ? active.filter((tx) => aiCategories[tx.id]?.source === 'llm') : active,
+    [active, aiCategories, showAIOnly],
+  )
 
   // Recategorize whenever rules change (customRules is the changing part)
   useEffect(() => {
@@ -60,8 +81,8 @@ export function CategoriesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customRules])
 
-  // Compute category totals using the full merged ruleset for correct metadata
-  const categoryTotals = useMemo(() => buildCategoryTotals(active, rules), [active, rules])
+  // Compute category totals using displayTransactions (respects AI-only filter)
+  const categoryTotals = useMemo(() => buildCategoryTotals(displayTransactions, rules), [displayTransactions, rules])
 
   // Selected category metadata
   const selectedCategory = useMemo(
@@ -72,8 +93,8 @@ export function CategoriesPage() {
   // Transactions for the drilldown
   const drilldownTransactions = useMemo(() => {
     if (!selectedId) return []
-    return active.filter((tx) => tx.category === selectedId)
-  }, [active, selectedId])
+    return displayTransactions.filter((tx) => tx.category === selectedId)
+  }, [displayTransactions, selectedId])
 
   // ── Rule mutations (always followed by recategorize) ──────────────────────
   const handleAddRule = useCallback(
@@ -109,7 +130,27 @@ export function CategoriesPage() {
   return (
     <div className="space-y-4">
       {/* Page title */}
-      <h1 className="text-2xl font-bold text-text-primary">Categories</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-text-primary">Categories</h1>
+        <div className="flex items-center gap-2">
+          {hasAiCategories && (
+            <button
+              type="button"
+              onClick={() => setShowAIOnly((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer',
+                showAIOnly
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-border text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
+              )}
+            >
+              <span className="text-[10px]">✦</span>
+              AI only
+            </button>
+          )}
+          <AICategorizeButton />
+        </div>
+      </div>
 
       {/* Bar chart */}
       <Card padding="lg">

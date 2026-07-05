@@ -18,6 +18,11 @@ export interface Filters {
    * opacity. When false, excluded rows are hidden entirely.
    */
   showExcluded: boolean
+  /**
+   * When true, only transactions that have an active (undismissed) anomaly
+   * finding are shown in the transaction table.
+   */
+  showFlaggedOnly: boolean
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -29,6 +34,7 @@ export const DEFAULT_FILTERS: Filters = {
   amountMin: null,
   amountMax: null,
   showExcluded: true,
+  showFlaggedOnly: false,
 }
 
 export interface FilterSlice {

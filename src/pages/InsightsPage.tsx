@@ -7,6 +7,7 @@ import { TopMerchantsTable } from '@/components/insights/TopMerchantsTable'
 import { BiggestTransactions } from '@/components/insights/BiggestTransactions'
 import { MonthlySpendTrendChart } from '@/components/insights/MonthlySpendTrendChart'
 import { IncomeSavingsChart } from '@/components/insights/IncomeSavingsChart'
+import { AnomalyAlerts } from '@/components/ai/AnomalyAlerts'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,9 @@ export function InsightsPage() {
         <h1 className="text-2xl font-bold text-text-primary">Insights</h1>
         <RangeSelector value={range} onChange={setRange} />
       </div>
+
+      {/* Anomaly alerts — LLM-powered unusual transaction detection */}
+      <AnomalyAlerts limit={10} />
 
       {/* Top 10 Merchants */}
       <Card padding="none">

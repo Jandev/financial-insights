@@ -1,8 +1,9 @@
 /**
- * Express API server — issues #13, #22.
+ * Express API server — issues #13, #17, #22.
  *
  * Serves the built React app as static files and exposes API endpoints
- * for CSV access (issue #13) and state persistence (issue #22).
+ * for CSV access (issue #13), state persistence (issue #22), and LLM
+ * features (issue #17 and onwards).
  *
  * Endpoints:
  *   GET  /api/health                     — Docker healthcheck
@@ -15,11 +16,26 @@
  *   PUT  /api/state/categories           — persist category overrides
  *   GET  /api/state/rules                — load custom category rules
  *   PUT  /api/state/rules                — persist custom rules
+ *   GET  /api/state/anomalies            — load anomaly findings
+ *   PUT  /api/state/anomalies            — persist anomaly findings
+ *   GET  /api/state/insights/:period     — load insight for a period
+ *   PUT  /api/state/insights/:period     — persist insight for a period
  *   GET  /api/state/summary              — state metadata
  *   POST /api/state/reset                — delete all state files
+ *   GET  /api/llm/status                 — LLM availability probe
+ *   POST /api/llm/transactions/sync      — feed the server-side transaction store
+ *   POST /api/llm/categorize             — AI batch categorization (SSE)
+ *   POST /api/llm/analyze                — anomaly detection (SSE)
+ *   GET  /api/llm/analyze/results        — cached anomaly findings
+ *   GET  /api/llm/insights/:period       — generate/stream narrative insight (SSE)
+ *   DELETE /api/llm/insights/:period     — clear cached insight
+ *   POST /api/llm/chat                   — start/continue chat thread
+ *   GET  /api/llm/chat/:threadId/stream  — stream chat response (SSE)
+ *   DELETE /api/llm/chat/:threadId       — clear chat thread
  *   GET  /*                              — static SPA fallback
  */
 
+import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import type { ErrorRequestHandler } from 'express'
@@ -28,8 +44,15 @@ import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import basicAuth from './middleware/basicAuth.js'
+import { llmRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
+import { loadFromDisk } from './services/transactionStore.js'
 import { createStateRouter } from './routes/state.js'
+import { createLLMRouter } from './routes/llm.js'
+import { createCategorizeRouter } from './routes/categorize.js'
+import { createAnalyzeRouter } from './routes/analyze.js'
+import { createInsightsRouter } from './routes/insights.js'
+import { createChatRouter } from './routes/chat.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -65,6 +88,7 @@ const app = express()
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(cors())
+app.use('/api/llm/transactions/sync', express.json({ limit: '10mb' }))
 app.use(express.json())
 app.use(basicAuth)
 
@@ -142,6 +166,16 @@ app.get('/api/transactions/:filename', (req, res) => {
 
 app.use('/api/state', createStateRouter(stateStore))
 
+// ── LLM routes (issues #17-#21) ───────────────────────────────────────────────
+// Rate limit applied to all /api/llm/* routes.
+
+app.use('/api/llm', llmRateLimiter)
+app.use('/api/llm', createLLMRouter(stateStore))
+app.use('/api/llm', createCategorizeRouter(stateStore))
+app.use('/api/llm', createAnalyzeRouter(stateStore))
+app.use('/api/llm', createInsightsRouter(stateStore))
+app.use('/api/llm', createChatRouter(stateStore))
+
 // ── Static SPA serving ────────────────────────────────────────────────────────
 
 const distDir = path.join(__dirname, '..', 'dist')
@@ -165,7 +199,7 @@ app.use(errorHandler)
 
 const server = createServer(app)
 
-void ensureStateDirs()
+void ensureStateDirs().then(() => loadFromDisk(stateStore))
 
 server.listen(PORT, () => {
   console.log(`[server] financial-insights running on port ${PORT} (${NODE_ENV})`)

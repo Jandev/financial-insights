@@ -119,7 +119,7 @@ export class StateStore {
   async reset(): Promise<string[]> {
     const deleted: string[] = []
 
-    const topKeys = ['categories', 'exclusions', 'rules', 'anomalies']
+    const topKeys = ['categories', 'exclusions', 'rules', 'anomalies', 'dismissed']
     for (const key of topKeys) {
       const fp = this.filePath(key)
       try {
@@ -169,7 +169,7 @@ export class StateStore {
    * Returns metadata about all top-level state keys.
    */
   async summary(): Promise<Record<string, StateSummaryEntry>> {
-    const keys = ['categories', 'exclusions', 'rules', 'anomalies']
+    const keys = ['categories', 'exclusions', 'rules', 'anomalies', 'dismissed']
     const result: Record<string, StateSummaryEntry> = {}
 
     for (const key of keys) {

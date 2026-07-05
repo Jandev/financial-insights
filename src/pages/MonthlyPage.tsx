@@ -12,7 +12,9 @@ import {
   MonthlyTransactionList,
   type ActiveFilter,
 } from '@/components/monthly/MonthlyTransactionList'
-import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
+import { AIInsightCard } from '@/components/ai/AIInsightCard'
+import { readOverridesFromStorage, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
@@ -42,18 +44,26 @@ function monthKeyToLabel(key: string): string {
 function monthKeyToShortLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
+  // key uses 0-indexed months (same as Date.getMonth()) — pass directly to Date
   return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(y, m, 1))
 }
 
+/** Convert a 0-indexed 'YYYY-MM' key to a 1-indexed ISO period for server API calls. */
+function keyToIsoPeriod(key: string): string {
+  const [y, m] = key.split('-').map(Number)
+  return `${y}-${String(m + 1).padStart(2, '0')}`
+}
+
 /** Build category breakdown totals from a list of transactions. */
-function buildCategoryTotals(txns: Transaction[]): {
+function buildCategoryTotals(txns: Transaction[], rules: CategoryRule[]): {
   categoryId: string
   name: string
   color: string
   total: number
   percentage: number
 }[] {
-  const meta = new Map(DEFAULT_RULES.map((r) => [r.id, { name: r.name, color: r.color }]))
+  // Build meta from the full ruleset (covers custom + default rules)
+  const meta = new Map(rules.map((r) => [r.id, { name: r.name, color: r.color }]))
   const map = new Map<string, number>()
 
   for (const tx of txns) {
@@ -143,13 +153,16 @@ export function MonthlyPage() {
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null)
 
-  const { transactions, excludedIds, loadingState } = useStore(
+  const { transactions, excludedIds, loadingState, aiCategories } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       loadingState: s.loadingState,
+      aiCategories: s.aiCategories,
     })),
   )
+
+  const { rules } = useCategoryRules()
 
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
 
@@ -160,11 +173,13 @@ export function MonthlyPage() {
   )
 
   // ── Sorted 'YYYY-MM' keys with at least one transaction ──────────────────
+  // Keys use 0-indexed months (same as Date.getMonth()) to match MonthNavigator
+  // and DashboardPage conventions. Converted to 1-indexed ISO only at API call sites.
   const availableMonths = useMemo(() => {
     const set = new Set<string>()
     for (const tx of allActive) {
       const y = tx.date.getFullYear()
-      const m = tx.date.getMonth()
+      const m = tx.date.getMonth()  // 0-indexed, consistent with MonthNavigator
       set.add(`${y}-${String(m).padStart(2, '0')}`)
     }
     return [...set].sort()
@@ -220,12 +235,22 @@ export function MonthlyPage() {
     [allMonthTxns, excludedIds],
   )
 
-  const incomeTxns = useMemo(
-    // Spaarpotje deposits/withdrawals are excluded — not real income/expense
-    () => monthTxns.filter(isIncomeTransaction),
-    [monthTxns],
-  )
-  const expenseTxns = useMemo(() => monthTxns.filter(isExpenseTransaction), [monthTxns])
+  // ── Apply AI category overlay to month transactions ────────────────────────
+  // Manual overrides (already baked into tx.category via recategorize) win over AI.
+  const effectiveMonthTxns = useMemo(() => {
+    const overrides = readOverridesFromStorage()
+    return monthTxns.map((tx) => {
+      const aiCat = aiCategories[tx.id]
+      if (aiCat?.source === 'llm' && !overrides[tx.id]) {
+        return { ...tx, category: aiCat.category }
+      }
+      return tx
+    })
+  }, [monthTxns, aiCategories])
+
+  // Spaarpotje deposits/withdrawals are excluded — not real income/expense
+  const incomeTxns = useMemo(() => effectiveMonthTxns.filter(isIncomeTransaction), [effectiveMonthTxns])
+  const expenseTxns = useMemo(() => effectiveMonthTxns.filter(isExpenseTransaction), [effectiveMonthTxns])
 
   // ── KPI totals ────────────────────────────────────────────────────────────
   const totalIncome = useMemo(
@@ -263,12 +288,12 @@ export function MonthlyPage() {
 
   // ── Category totals for pie charts + bar lists ────────────────────────────
   const incomeCategoryTotals = useMemo(
-    () => buildCategoryTotals(incomeTxns),
-    [incomeTxns],
+    () => buildCategoryTotals(incomeTxns, rules),
+    [incomeTxns, rules],
   )
   const expenseCategoryTotals = useMemo(
-    () => buildCategoryTotals(expenseTxns),
-    [expenseTxns],
+    () => buildCategoryTotals(expenseTxns, rules),
+    [expenseTxns, rules],
   )
 
   // ── Donut slice helpers ───────────────────────────────────────────────────
@@ -542,6 +567,14 @@ export function MonthlyPage() {
           )}
         </Card>
       </div>
+
+      {/* ── AI Insight ──────────────────────────────────────────────────────── */}
+      {selectedMonthKey && !isLoading && !isEmpty && (
+        <AIInsightCard
+          period={keyToIsoPeriod(selectedMonthKey)}
+          periodLabel={monthKeyToLabel(selectedMonthKey)}
+        />
+      )}
 
       {/* ── Transaction list ────────────────────────────────────────────────── */}
       <Card padding="lg">

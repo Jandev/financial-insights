@@ -218,10 +218,12 @@ interface CategoryBadgeProps {
 export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
   const [open, setOpen] = useState(false)
   const { rules } = useCategoryRules()
+  const aiCategories = useStore((s) => s.aiCategories)
 
   // Resolve name + color from the full ruleset (covers custom rules too)
   const meta = rules.find((r) => r.id === tx.category)
   const hasOverride = Boolean(overrides[tx.id])
+  const isAICategorized = aiCategories[tx.id]?.source === 'llm'
 
   const color = meta?.color ?? '#8E8E93'
   const name = meta?.name ?? tx.category ?? '—'
@@ -231,7 +233,13 @@ export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
       <RadixPopover.Trigger asChild>
         <button
           type="button"
-          title={hasOverride ? 'Manual override — click to change' : 'Click to change category'}
+          title={
+            isAICategorized
+              ? `AI categorized${hasOverride ? ' (overridden)' : ''} — click to change`
+              : hasOverride
+                ? 'Manual override — click to change'
+                : 'Click to change category'
+          }
           className={cn(
             'inline-flex items-center gap-1.5 rounded-[4px] px-2 py-1',
             'text-[11px] font-medium leading-none',
@@ -247,6 +255,9 @@ export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
             aria-hidden="true"
           />
           <span className="max-w-[80px] truncate">{name}</span>
+          {isAICategorized && !hasOverride && (
+            <span className="shrink-0 text-[9px] text-accent leading-none" aria-label="AI categorized">✦</span>
+          )}
           {hasOverride && (
             <Pencil size={9} className="shrink-0 text-text-muted" aria-label="Manual override" />
           )}
