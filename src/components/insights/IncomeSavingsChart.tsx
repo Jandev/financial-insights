@@ -13,6 +13,7 @@ import {
   type TooltipContentProps,
 } from 'recharts'
 import { formatCurrency } from '@/lib/utils'
+import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
 // ─── Data computation ─────────────────────────────────────────────────────────
@@ -37,8 +38,8 @@ function buildChartData(transactions: Transaction[]): MonthDatum[] {
     const key = `${year}-${String(month).padStart(2, '0')}`
     if (!map.has(key)) map.set(key, { year, month, income: 0, expenses: 0 })
     const entry = map.get(key)!
-    if (tx.amount > 0) entry.income += tx.amount
-    else entry.expenses += tx.amount
+    if (isIncomeTransaction(tx)) entry.income += tx.amount
+    else if (isExpenseTransaction(tx)) entry.expenses += tx.amount
   }
 
   return [...map.values()]

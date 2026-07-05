@@ -8,11 +8,13 @@ import {
   readRulesFromStorage,
   readOverridesFromStorage,
   matchSpaarpotje,
+  matchPersonalAccount,
 } from '@/lib/categories'
 import {
   readSavingsAccountsFromStorage,
   readTagOverridesFromStorage,
 } from '@/hooks/useSavingsAccounts'
+import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
 import type { StoreState } from '../useStore'
 
 export interface TransactionSlice {
@@ -69,6 +71,7 @@ export const createTransactionSlice: StateCreator<
     const overrides = readOverridesFromStorage()
     const spaarpotjes = readSavingsAccountsFromStorage()
     const tagOverrides = readTagOverridesFromStorage()
+    const personalAccounts = readPersonalAccountsFromStorage()
 
     const recategorized = transactions.map((tx) => {
       // 1. Spaarpotje IBAN match — highest priority, overrides all rules
@@ -78,8 +81,21 @@ export const createTransactionSlice: StateCreator<
         return { ...tx, category: potMatch.category, tags }
       }
 
-      // 2. Manual category override, then rule-based categorization
-      const category = overrides[tx.id] ?? categorize(tx, rules)
+      // 2. Manual category override wins over auto-classification
+      const manualOverride = overrides[tx.id]
+      if (manualOverride !== undefined) {
+        const tags = tagOverrides[tx.id] ?? []
+        return { ...tx, category: manualOverride, tags }
+      }
+
+      // 3. Personal account IBAN match → internal-transfer
+      if (matchPersonalAccount(tx, personalAccounts)) {
+        const tags = tagOverrides[tx.id] ?? []
+        return { ...tx, category: 'internal-transfer', tags }
+      }
+
+      // 4. Rule-based categorization (includes `tb` → `internal-transfer` fallback)
+      const category = categorize(tx, rules)
       const tags = tagOverrides[tx.id] ?? []
 
       return category === tx.category && tags.length === 0 && (tx.tags ?? []).length === 0

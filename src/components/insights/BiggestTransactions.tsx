@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { ExclusionToggle } from '@/components/transactions/ExclusionToggle'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ export function BiggestTransactions({ transactions }: Props) {
   const topExpenses = useMemo(
     () =>
       [...transactions]
-        .filter((tx) => tx.amount < 0)
+        .filter(isExpenseTransaction)
         .sort((a, b) => a.amount - b.amount)
         .slice(0, 10),
     [transactions],
@@ -113,7 +114,7 @@ export function BiggestTransactions({ transactions }: Props) {
   const topIncome = useMemo(
     () =>
       [...transactions]
-        .filter((tx) => tx.amount > 0)
+        .filter(isIncomeTransaction)
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 10),
     [transactions],

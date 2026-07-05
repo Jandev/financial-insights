@@ -12,7 +12,7 @@ import {
   MonthlyTransactionList,
   type ActiveFilter,
 } from '@/components/monthly/MonthlyTransactionList'
-import { DEFAULT_RULES } from '@/lib/categories'
+import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
@@ -221,11 +221,11 @@ export function MonthlyPage() {
   )
 
   const incomeTxns = useMemo(
-    // Exclude spaarpotje-withdrawal — money returning from savings is not real income
-    () => monthTxns.filter((tx) => tx.amount > 0 && tx.category !== 'spaarpotje-withdrawal'),
+    // Spaarpotje deposits/withdrawals are excluded — not real income/expense
+    () => monthTxns.filter(isIncomeTransaction),
     [monthTxns],
   )
-  const expenseTxns = useMemo(() => monthTxns.filter((tx) => tx.amount < 0), [monthTxns])
+  const expenseTxns = useMemo(() => monthTxns.filter(isExpenseTransaction), [monthTxns])
 
   // ── KPI totals ────────────────────────────────────────────────────────────
   const totalIncome = useMemo(
@@ -248,10 +248,10 @@ export function MonthlyPage() {
       (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm,
     )
     const prevInc = prevTxns
-      .filter((t) => t.amount > 0 && t.category !== 'spaarpotje-withdrawal')
+      .filter(isIncomeTransaction)
       .reduce((s, t) => s + t.amount, 0)
     const prevExp = prevTxns
-      .filter((t) => t.amount < 0)
+      .filter(isExpenseTransaction)
       .reduce((s, t) => s + Math.abs(t.amount), 0)
     return {
       prevMonthName: monthKeyToShortLabel(prevKey),
