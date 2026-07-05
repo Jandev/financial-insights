@@ -15,6 +15,13 @@ export interface ExclusionSlice {
 
   /** Restore all exclusions globally (not filter-scoped) */
   restoreAll: () => void
+
+  /**
+   * Restore exclusions for a specific subset of IDs only.
+   * Used by the table's "Restore all" button which operates on the
+   * currently-filtered rows only, leaving other exclusions untouched.
+   */
+  restoreFiltered: (ids: string[]) => void
 }
 
 export const createExclusionSlice: StateCreator<
@@ -44,4 +51,11 @@ export const createExclusionSlice: StateCreator<
     }),
 
   restoreAll: () => set({ excludedIds: new Set() }),
+
+  restoreFiltered: (ids) =>
+    set((s) => {
+      const next = new Set(s.excludedIds)
+      ids.forEach((id) => next.delete(id))
+      return { excludedIds: next }
+    }),
 })
