@@ -71,6 +71,14 @@ export interface Transaction {
   /** Category assigned by the categorization engine or user. Default: `''` */
   category: string
 
+  /**
+   * Tags applied by the categorization engine or user.
+   * Used by spaarpotje categorization to identify which savings goal a
+   * transaction belongs to. Persisted separately in localStorage.
+   * MVP: one tag per spaarpotje transaction.
+   */
+  tags: string[]
+
   /** When true the transaction is excluded from charts and totals */
   isExcluded: boolean
 }
