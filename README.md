@@ -10,15 +10,18 @@ A personal finance dashboard for analyzing Rabobank transaction data. Visualizes
 - Transaction table with filtering, sorting, and category overrides
 - Insights page — top merchants, biggest transactions, monthly spend trend, income vs savings rate
 - Named savings goals (Spaarpotjes) — track deposits/withdrawals per named pot
-- Internal transfer detection — own-account transfers excluded from income/expense automatically
+- Internal transfer detection — own-account transfers excluded from income/expense automatically (configure own IBANs in Settings → Personal Accounts)
 - Category breakdown with custom rules and tag support
-- State persistence across sessions via server-side JSON store
+- State persistence across sessions via server-side JSON store (survives container restarts)
+- Settings page — Personal Accounts CRUD, Spaarpotjes CRUD, hard CSV refresh, danger zone reset
 - **AI Categorization** — LLM assigns/corrects categories in bulk
 - **Anomaly Detection** — statistical + LLM-explained unusual transactions
 - **AI Monthly Insights** — streaming narrative summaries per month
-- **AI Advisor chat** — conversational financial advisor with 6 tools
+- **AI Advisor chat** — conversational financial advisor with 7 tools
 
 Place your own Rabobank CSV exports in `data/transactions/`.
+
+See [`docs/`](docs/) for deep-dive documentation on individual features.
 
 ---
 
@@ -123,8 +126,8 @@ The image contains no CSV data. State survives container restarts via the `data/
 | `TRANSACTIONS_PATH` | `/app/data/transactions` | Path to CSV files inside container |
 | `STATE_PATH` | `/app/data/state` | Path to state JSON files inside container |
 | `APP_TITLE` | `Financial Insights` | Page title |
-| `BASIC_AUTH_USER` | _(empty)_ | HTTP Basic Auth username — leave blank to disable |
-| `BASIC_AUTH_PASS` | _(empty)_ | HTTP Basic Auth password — leave blank to disable |
+| `BASIC_AUTH_USER` | _(empty)_ | HTTP Basic Auth username — leave blank to disable (**not yet implemented**, see issue #14) |
+| `BASIC_AUTH_PASS` | _(empty)_ | HTTP Basic Auth password — leave blank to disable (**not yet implemented**, see issue #14) |
 | `AZURE_OPENAI_ENDPOINT` | _(empty)_ | Azure OpenAI endpoint (`cognitiveservices.azure.com` format) |
 | `AZURE_OPENAI_API_KEY` | _(empty)_ | Azure OpenAI key |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Azure OpenAI deployment name |
