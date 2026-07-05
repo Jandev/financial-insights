@@ -36,17 +36,22 @@ function pctFmt(value: number, prev: number): string {
 function monthKeyToLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
-  // key uses 1-indexed months (ISO format) — convert to 0-indexed for Date
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m - 1, 1),
+    new Date(y, m, 1),
   )
 }
 
 function monthKeyToShortLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
-  // key uses 1-indexed months (ISO format) — convert to 0-indexed for Date
-  return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(y, m - 1, 1))
+  // key uses 0-indexed months (same as Date.getMonth()) — pass directly to Date
+  return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(y, m, 1))
+}
+
+/** Convert a 0-indexed 'YYYY-MM' key to a 1-indexed ISO period for server API calls. */
+function keyToIsoPeriod(key: string): string {
+  const [y, m] = key.split('-').map(Number)
+  return `${y}-${String(m + 1).padStart(2, '0')}`
 }
 
 /** Build category breakdown totals from a list of transactions. */
@@ -168,13 +173,13 @@ export function MonthlyPage() {
   )
 
   // ── Sorted 'YYYY-MM' keys with at least one transaction ──────────────────
-  // Keys use 1-indexed months (ISO format) so they can be passed directly to
-  // the server (e.g. AIInsightCard calls /api/llm/insights/YYYY-MM).
+  // Keys use 0-indexed months (same as Date.getMonth()) to match MonthNavigator
+  // and DashboardPage conventions. Converted to 1-indexed ISO only at API call sites.
   const availableMonths = useMemo(() => {
     const set = new Set<string>()
     for (const tx of allActive) {
       const y = tx.date.getFullYear()
-      const m = tx.date.getMonth() + 1  // 1-indexed → ISO-compatible
+      const m = tx.date.getMonth()  // 0-indexed, consistent with MonthNavigator
       set.add(`${y}-${String(m).padStart(2, '0')}`)
     }
     return [...set].sort()
@@ -219,9 +224,8 @@ export function MonthlyPage() {
   const allMonthTxns = useMemo(() => {
     if (!selectedMonthKey) return []
     const [y, m] = selectedMonthKey.split('-').map(Number)
-    // Key is 1-indexed; Date.getMonth() is 0-indexed
     return transactions.filter(
-      (tx) => tx.date.getFullYear() === y && tx.date.getMonth() === m - 1,
+      (tx) => tx.date.getFullYear() === y && tx.date.getMonth() === m,
     )
   }, [transactions, selectedMonthKey])
 
@@ -265,9 +269,8 @@ export function MonthlyPage() {
     if (idx <= 0) return null
     const prevKey = availableMonths[idx - 1]
     const [py, pm] = prevKey.split('-').map(Number)
-    // Key is 1-indexed; Date.getMonth() is 0-indexed
     const prevTxns = allActive.filter(
-      (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm - 1,
+      (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm,
     )
     const prevInc = prevTxns
       .filter(isIncomeTransaction)
@@ -568,7 +571,7 @@ export function MonthlyPage() {
       {/* ── AI Insight ──────────────────────────────────────────────────────── */}
       {selectedMonthKey && !isLoading && !isEmpty && (
         <AIInsightCard
-          period={selectedMonthKey}
+          period={keyToIsoPeriod(selectedMonthKey)}
           periodLabel={monthKeyToLabel(selectedMonthKey)}
         />
       )}
