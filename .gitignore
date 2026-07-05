@@ -349,6 +349,7 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 data/transactions/*.csv
+!data/transactions/CSV_DEMO_*.csv
 .playwright-mcp
 
 # Vite / Node
