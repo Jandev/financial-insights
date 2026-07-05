@@ -83,7 +83,7 @@
     /* Text */
     --text-primary:   #1A1A2E;
     --text-secondary: #4A5580;
-    --text-muted:     #8A96B8;
+    --text-muted:     #6272A0;
 
     /* Semantic */
     --income:      #16A37F;
@@ -119,8 +119,8 @@
     --border-strong: #2A3A55;
 
     --text-primary:   #DDE3F0;
-    --text-secondary: #7A8AAD;
-    --text-muted:     #3D4A63;
+    --text-secondary: #7E8EB4;
+    --text-muted:     #8090B0;
 
     --income:      #2DD4A0;
     --income-dim:  #0D2E28;
