@@ -15,7 +15,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
-import { useTransactionStore } from '@/store/transactions'
+import { useStore } from '@/store'
 
 const navItems = [
   { to: '/',              label: 'Dashboard',    Icon: LayoutDashboard },
@@ -35,7 +35,7 @@ const navItems = [
  */
 export function Sidebar() {
   const [debugOpen, setDebugOpen] = useState(false)
-  const { fileLog } = useTransactionStore()
+  const { fileLog } = useStore()
 
   return (
     <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 flex w-[220px] flex-col">
