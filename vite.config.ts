@@ -15,6 +15,14 @@ export default defineConfig({
       // Allow serving files from the project root, including data/
       allow: ['.'],
     },
+    proxy: {
+      // In dev:full mode (Vite + Express running together), proxy API calls
+      // to the Express server so state persistence works locally.
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: 'node',

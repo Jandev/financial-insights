@@ -12,6 +12,7 @@ export type { TransactionSlice } from './slices/transactionSlice'
 export type { ExclusionSlice } from './slices/exclusionSlice'
 export type { FilterSlice, Filters } from './slices/filterSlice'
 export type { ThemeSlice, Theme } from './slices/themeSlice'
+export type { ServerStateSlice } from './slices/serverStateSlice'
 
 // Derived selector hooks
 export {

@@ -1,14 +1,20 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   STORAGE_KEY_OVERRIDES,
   readOverridesFromStorage,
   type CategoryOverrides,
 } from '@/lib/categories'
+import { debouncePut } from '@/lib/serverState'
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function persist(overrides: CategoryOverrides): void {
+function persistLocal(overrides: CategoryOverrides): void {
   localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(overrides))
+}
+
+function persistAll(overrides: CategoryOverrides): void {
+  persistLocal(overrides)
+  debouncePut('categories', overrides)
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -36,10 +42,15 @@ export interface UseCategoryOverridesResult {
 }
 
 /**
- * Manage per-transaction manual category overrides with localStorage persistence.
+ * Manage per-transaction manual category overrides with localStorage + server
+ * persistence.
  *
  * Overrides are stored under `financial-insights:category-overrides` as a
  * `Record<txId, categoryId>` map and applied on top of rule-based categorization.
+ *
+ * When the Express state API is available, every mutation also fires a
+ * debounced PUT /api/state/categories (500 ms window). The same key holds
+ * LLM-assigned categories when issue #18 is implemented.
  *
  * Override wins over rules. If a user later edits the rules, a transaction with
  * an override keeps its manually assigned category until the override is removed.
@@ -55,10 +66,19 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
     readOverridesFromStorage(),
   )
 
+  // Re-read from localStorage when server hydration writes fresh data
+  useEffect(() => {
+    const handler = () => {
+      setOverrides(readOverridesFromStorage())
+    }
+    window.addEventListener('state-hydrated', handler)
+    return () => window.removeEventListener('state-hydrated', handler)
+  }, [])
+
   const setOverride = useCallback((txId: string, categoryId: string) => {
     setOverrides((prev) => {
       const updated = { ...prev, [txId]: categoryId }
-      persist(updated)
+      persistAll(updated)
       return updated
     })
   }, [])
@@ -67,13 +87,14 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
     setOverrides((prev) => {
       const updated = { ...prev }
       delete updated[txId]
-      persist(updated)
+      persistAll(updated)
       return updated
     })
   }, [])
 
   const clearAll = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY_OVERRIDES)
+    debouncePut('categories', {})
     setOverrides({})
   }, [])
 

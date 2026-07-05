@@ -7,6 +7,14 @@ services:
     volumes:
       # Mount local transactions folder (read-only); CSV files are never baked into the image
       - ./data/transactions:/app/data/transactions:ro
+      # Mount state folder (read-write) so persisted JSON survives container restarts
+      - ./data/state:/app/data/state:rw
+    # Run as a specific UID:GID. Set UID/GID in .env to match the owner of
+    # ./data/state on the host so the process can write state files.
+    # Defaults to 1000:1000 if not set.
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      STATE_PATH: /app/data/state
     env_file:
       - .env
     restart: unless-stopped
