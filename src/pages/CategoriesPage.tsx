@@ -10,8 +10,17 @@ import { CategoryBarChart } from '@/components/categories/CategoryBarChart'
 import { DrilldownPanel } from '@/components/categories/DrilldownPanel'
 import { RuleEditor } from '@/components/categories/RuleEditor'
 import { AICategorizeButton } from '@/components/ai/AICategorizeButton'
+import { MonthNavigator } from '@/components/ui/MonthNavigator'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function monthKeyToLabel(key: string): string {
+  if (!key) return ''
+  const [y, m] = key.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+    new Date(y, m, 1),
+  )
+}
 
 function buildCategoryTotals(
   transactions: ReturnType<typeof useActiveTransactions>,
@@ -56,11 +65,40 @@ export function CategoriesPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showAIOnly, setShowAIOnly] = useState(false)
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
 
-  // Whether any AI-categorized transactions exist in the current set
+  // Derive sorted list of months (YYYY-MM, 0-indexed) that have data
+  const months = useMemo(() => {
+    const keys = new Set(
+      active.map((tx) => {
+        const d = new Date(tx.date)
+        return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+      }),
+    )
+    return [...keys].sort()
+  }, [active])
+
+  // Default to most recent month with data; re-sync if transactions load later
+  useEffect(() => {
+    if (months.length > 0 && (!selectedMonthKey || !months.includes(selectedMonthKey))) {
+      setSelectedMonthKey(months[months.length - 1])
+    }
+  }, [months, selectedMonthKey])
+
+  // Filter active transactions to the selected month
+  const monthTransactions = useMemo(() => {
+    if (!selectedMonthKey) return active
+    const [y, m] = selectedMonthKey.split('-').map(Number)
+    return active.filter((tx) => {
+      const d = new Date(tx.date)
+      return d.getFullYear() === y && d.getMonth() === m
+    })
+  }, [active, selectedMonthKey])
+
+  // Whether any AI-categorized transactions exist in the current month
   const hasAiCategories = useMemo(
-    () => Object.values(aiCategories).some((v) => v.source === 'llm'),
-    [aiCategories],
+    () => monthTransactions.some((tx) => aiCategories[tx.id]?.source === 'llm'),
+    [monthTransactions, aiCategories],
   )
 
   // Auto-clear AI-only filter when AI categories are removed
@@ -70,8 +108,8 @@ export function CategoriesPage() {
 
   // When showAIOnly is on, restrict to AI-categorized transactions only
   const displayTransactions = useMemo(
-    () => showAIOnly ? active.filter((tx) => aiCategories[tx.id]?.source === 'llm') : active,
-    [active, aiCategories, showAIOnly],
+    () => showAIOnly ? monthTransactions.filter((tx) => aiCategories[tx.id]?.source === 'llm') : monthTransactions,
+    [monthTransactions, aiCategories, showAIOnly],
   )
 
   // Recategorize whenever rules change (customRules is the changing part)
@@ -132,7 +170,14 @@ export function CategoriesPage() {
       {/* Page title */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Categories</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {months.length > 0 && (
+            <MonthNavigator
+              months={months}
+              selected={selectedMonthKey}
+              onChange={(key) => { setSelectedMonthKey(key); setSelectedId(null) }}
+            />
+          )}
           {hasAiCategories && (
             <button
               type="button"
@@ -155,7 +200,7 @@ export function CategoriesPage() {
       {/* Bar chart */}
       <Card padding="lg">
         <h2 className="mb-4 text-sm font-semibold text-text-primary">
-          Spending by Category
+          Spending by Category{selectedMonthKey ? ` — ${monthKeyToLabel(selectedMonthKey)}` : ''}
         </h2>
         <CategoryBarChart
           data={categoryTotals}
