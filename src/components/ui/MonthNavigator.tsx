@@ -12,7 +12,7 @@ function keyToLabel(key: string): string {
   if (!key) return '—'
   const [y, m] = key.split('-').map(Number)
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m - 1, 1),
+    new Date(y, m, 1),
   )
 }
 
