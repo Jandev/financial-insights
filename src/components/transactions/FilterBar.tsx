@@ -230,6 +230,7 @@ export function FilterBar() {
     filters.transactionCodes.length > 0,
     filters.amountMin !== DEFAULT_FILTERS.amountMin,
     filters.amountMax !== DEFAULT_FILTERS.amountMax,
+    filters.showFlaggedOnly,
   ].filter(Boolean).length
 
   return (
@@ -368,6 +369,32 @@ export function FilterBar() {
           />
         </span>
         <span className="text-xs text-text-secondary">Show hidden</span>
+      </label>
+
+      {/* Flagged only toggle */}
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={filters.showFlaggedOnly}
+          onChange={(e) => setFilter('showFlaggedOnly', e.target.checked)}
+          className="sr-only peer"
+        />
+        <span
+          className={cn(
+            'relative inline-flex h-4.5 w-8 items-center rounded-full border',
+            'transition-colors duration-200',
+            'peer-focus-visible:ring-2 peer-focus-visible:ring-accent/50',
+            filters.showFlaggedOnly ? 'bg-[#FF9500] border-[#FF9500]' : 'bg-bg-surface border-border',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute h-3 w-3 rounded-full bg-white shadow-sm transition-transform duration-200',
+              filters.showFlaggedOnly ? 'translate-x-4' : 'translate-x-0.5',
+            )}
+          />
+        </span>
+        <span className="text-xs text-text-secondary">Flagged only</span>
       </label>
 
       {/* Clear filters */}
