@@ -74,7 +74,7 @@ function periodLabel(period: string): string {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function buildInsightContext(txs: TxSnapshot[], period: string): InsightContext {
+export function buildInsightContext(txs: TxSnapshot[], period: string, unusualFlags = 0): InsightContext {
   const current = filterByPeriod(txs, period)
   const prev = prevPeriod(period)
   const prevTxs = prev ? filterByPeriod(txs, prev) : []
@@ -168,6 +168,6 @@ export function buildInsightContext(txs: TxSnapshot[], period: string): InsightC
       ? { counterparty: biggestIncome.counterpartyName, amount: biggestIncome.amount, date: biggestIncome.date }
       : null,
     transactionCount: current.length,
-    unusualFlags: 0, // populated by the route if anomaly data is available
+    unusualFlags,
   }
 }

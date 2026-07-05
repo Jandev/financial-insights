@@ -69,10 +69,28 @@ export function createInsightsRouter(stateStore: StateStore): Router {
       return
     }
 
-    // Build context and stream
+    // Build context: count non-dismissed anomaly findings for this period
     const sse = createSSEStream(res)
     const transactions = getTransactions()
-    const context = buildInsightContext(transactions, period)
+
+    const anomalyData = await stateStore.read<{
+      findings: Array<{ transactionId: string; severity: string }>
+      dismissedIds?: string[]
+    }>('anomalies').catch(() => null)
+
+    let unusualFlags = 0
+    if (anomalyData?.findings) {
+      const dismissed = new Set(anomalyData.dismissedIds ?? [])
+      unusualFlags = anomalyData.findings.filter((f) => {
+        if (dismissed.has(f.transactionId)) return false
+        if (period === 'all-time') return true
+        // Match finding to a transaction in the current period
+        const tx = transactions.find((t) => t.id === f.transactionId)
+        return tx ? tx.date.startsWith(period) : false
+      }).length
+    }
+
+    const context = buildInsightContext(transactions, period, unusualFlags)
 
     const prompt = ChatPromptTemplate.fromMessages([
       ['system', SYSTEM_PROMPT],

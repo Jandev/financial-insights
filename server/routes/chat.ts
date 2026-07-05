@@ -9,7 +9,7 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { createSSEStream } from '../lib/sse.js'
-import { getAdvisor } from '../services/advisor.js'
+import { getAdvisor, clearAdvisorThread } from '../services/advisor.js'
 import type { StateStore } from '../services/stateStore.js'
 
 // In-memory queue: threadId → pending user message
@@ -30,8 +30,11 @@ export function createChatRouter(stateStore: StateStore): Router {
     const threadId = body.threadId ?? randomUUID()
     const messageId = randomUUID()
 
-    // Queue the message for the SSE stream endpoint to consume
+    // Queue the message for the SSE stream endpoint to consume.
+    // Schedule a 30-second TTL so orphaned entries (client dropped after POST
+    // but before GET /stream) don't accumulate indefinitely.
     pendingMessages.set(threadId, body.message)
+    setTimeout(() => pendingMessages.delete(threadId), 30_000)
 
     res.status(202).json({ threadId, messageId })
   })
@@ -99,11 +102,9 @@ export function createChatRouter(stateStore: StateStore): Router {
   })
 
   // DELETE /api/llm/chat/:threadId
-  router.delete('/chat/:threadId', (_req, res) => {
-    // MemorySaver state is per-thread; we can't directly clear it without
-    // re-creating the agent. Instead we mark the thread as reset so the
-    // next message starts a fresh context by using a new UUID on the client.
-    // The old MemorySaver entry will be garbage-collected on server restart.
+  router.delete('/chat/:threadId', (req, res) => {
+    const { threadId } = req.params
+    clearAdvisorThread(threadId)
     res.json({ cleared: true })
   })
 

@@ -49,8 +49,9 @@ export interface UseCategoryOverridesResult {
  * `Record<txId, categoryId>` map and applied on top of rule-based categorization.
  *
  * When the Express state API is available, every mutation also fires a
- * debounced PUT /api/state/categories (500 ms window). The same key holds
- * LLM-assigned categories when issue #18 is implemented.
+ * debounced PUT /api/state/categories (500 ms window). AI-assigned categories
+ * (issue #18) are stored separately in the Zustand `aiCategories` overlay and
+ * do not share this key.
  *
  * Override wins over rules. If a user later edits the rules, a transaction with
  * an override keeps its manually assigned category until the override is removed.
