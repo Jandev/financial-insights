@@ -15,10 +15,10 @@ import { randomUUID } from '@/lib/uuid'
 import type { ChatMessage } from '@/store/slices/llmSlice'
 
 const SUGGESTED_QUESTIONS = [
-  'Where am I spending the most?',
+  'Where am I spending the most this month?',
   'How does this month compare to last month?',
-  'What are my biggest single expenses?',
-  'What is my savings rate trend?',
+  'What were my biggest expenses last month?',
+  'Show my savings trend over the last 6 months',
 ]
 
 export function ChatInterface() {

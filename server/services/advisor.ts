@@ -9,6 +9,7 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
 import { MemorySaver } from '@langchain/langgraph'
 import { tool } from '@langchain/core/tools'
+import { SystemMessage } from '@langchain/core/messages'
 import { z } from 'zod'
 import { createLLMClient } from './llm.js'
 import {
@@ -16,6 +17,7 @@ import {
   getByMonth,
   getByYear,
   getByDateRange,
+  getAvailableMonths,
 } from './transactionStore.js'
 import { runBatchCategorization, DEFAULT_AVAILABLE_CATEGORIES } from './categorizer.js'
 import type { StateStore } from './stateStore.js'
@@ -29,14 +31,16 @@ const memory = new MemorySaver()
  * Called by DELETE /api/llm/chat/:threadId so "New conversation" immediately
  * frees memory rather than waiting for a server restart.
  *
- * MemorySaver stores checkpoints in an internal Map keyed by thread_id.
- * Accessing `.storage` is undocumented but stable across LangGraph versions
- * in use — it is a plain `Map<string, Map<string, ...>>`.
+ * MemorySaver stores checkpoints in plain null-prototype objects (storage,
+ * writes) keyed by thread_id — not a Map. Use the delete operator.
  */
 export function clearAdvisorThread(threadId: string): void {
+  // MemorySaver stores checkpoints in plain null-prototype objects keyed by
+  // thread_id — not a Map. Use the delete operator on both storage and writes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const storage = (memory as any).storage as Map<string, unknown> | undefined
-  storage?.delete(threadId)
+  const mem = memory as any
+  if (mem.storage) delete mem.storage[threadId]
+  if (mem.writes) delete mem.writes[threadId]
 }
 
 // ─── Tool helpers ─────────────────────────────────────────────────────────────
@@ -192,13 +196,29 @@ const getSavingsTrendTool = tool(
   },
 )
 
-const SYSTEM_PROMPT = `You are a friendly, knowledgeable Dutch personal finance advisor.
+function buildSystemPrompt(): string {
+  const months = getAvailableMonths()
+  const monthsList = months.length > 0
+    ? months.join(', ')
+    : 'no data loaded yet'
+  const latest = months.length > 0 ? months[months.length - 1] : null
+
+  return `You are a friendly, knowledgeable Dutch personal finance advisor.
 You have access to the user's Rabobank transaction data via your tools.
 Always use tools to look up data — never guess or hallucinate numbers.
 Keep responses concise and actionable. Use € for amounts.
 If asked about future predictions, be appropriately cautious.
 Dutch merchant names in the data are normal — Rabobank is a Dutch bank.
-Raw IBANs and personal data are not available to you for privacy reasons.`
+Raw IBANs and personal data are not available to you for privacy reasons.
+
+Available data periods: ${monthsList}${latest ? `\nMost recent month: ${latest}` : ''}
+
+IMPORTANT — time period handling:
+- When the user asks a question that does not specify a time period (e.g. "where am I spending the most?", "what are my biggest expenses?"), you MUST ask which period they want before calling any tool.
+- Offer concrete options based on the available periods above, for example: last month (${latest ?? 'N/A'}), last 3 months, last 6 months, a specific month, or all-time.
+- Only skip asking if the question already contains a clear time reference (e.g. "last month", "in June", "this year", "over the last 3 months") or if the user is asking a follow-up within the same conversation where the period is already established.
+- For month comparisons, ask which two months to compare if not specified.`
+}
 
 // ─── Agent factory ────────────────────────────────────────────────────────────
 
@@ -258,7 +278,7 @@ export function getAdvisor(stateStore: StateStore): ReturnType<typeof createReac
         runCategorizationTool,
       ],
       checkpointSaver: memory,
-      messageModifier: SYSTEM_PROMPT,
+      messageModifier: (messages) => [new SystemMessage(buildSystemPrompt()), ...messages],
     })
   }
 
