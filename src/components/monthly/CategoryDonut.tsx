@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 import {
   PieChart,
   Pie,
   Cell,
   Sector,
   ResponsiveContainer,
-  type PieLabelRenderProps,
+  type PieSectorDataItem,
 } from 'recharts'
 import { formatCurrency } from '@/lib/utils'
 
@@ -32,22 +32,14 @@ interface Props {
 
 // ─── Active shape (enlarged on hover) ────────────────────────────────────────
 
-function ActiveShape(props: PieLabelRenderProps) {
-  const {
-    cx, cy, innerRadius, outerRadius, startAngle, endAngle,
-    fill,
-  } = props as {
-    cx: number; cy: number
-    innerRadius: number; outerRadius: number
-    startAngle: number; endAngle: number
-    fill: string
-  }
+function ActiveShape(props: PieSectorDataItem) {
+  const { cx = 0, cy = 0, innerRadius = 0, outerRadius = 0, startAngle = 0, endAngle = 0, fill = '' } = props
 
   return (
     <g>
       <Sector
-        cx={cx}
-        cy={cy}
+        cx={cx as number}
+        cy={cy as number}
         innerRadius={innerRadius}
         outerRadius={(outerRadius as number) + 6}
         startAngle={startAngle}
@@ -68,12 +60,9 @@ export function CategoryDonut({
   selectedId,
   onSelect,
 }: Props) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-
   const handleClick = useCallback(
     (_: unknown, index: number) => {
       const id = slices[index]?.categoryId ?? null
-      // Toggle off if clicking the already-selected segment
       onSelect(selectedId === id ? null : id)
     },
     [slices, selectedId, onSelect],
@@ -100,11 +89,8 @@ export function CategoryDonut({
             innerRadius={52}
             outerRadius={72}
             paddingAngle={2}
-            activeIndex={hoverIndex ?? undefined}
             activeShape={ActiveShape}
             onClick={handleClick}
-            onMouseEnter={(_, index) => setHoverIndex(index)}
-            onMouseLeave={() => setHoverIndex(null)}
             style={{ cursor: 'pointer', outline: 'none' }}
           >
             {slices.map((slice) => (
