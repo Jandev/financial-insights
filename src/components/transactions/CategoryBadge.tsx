@@ -65,7 +65,15 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
       name: pendingCategory.name,
       color: pendingCategory.color,
       icon: pendingCategory.icon,
-      patterns: [tx.counterpartyName.toLowerCase()],
+      conditions: [
+        {
+          id: `rule-${Date.now()}`,
+          field: 'description',
+          operator: 'contains',
+          value: tx.counterpartyName.toLowerCase(),
+        },
+      ],
+      combinator: 'and',
       id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     })
     recategorize()

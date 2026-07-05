@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   DEFAULT_RULES,
   STORAGE_KEY_RULES,
   readRulesFromStorage,
+  migrateCustomRule,
   type CategoryRule,
 } from '@/lib/categories'
 
@@ -58,11 +59,21 @@ export interface UseCategoryRulesResult {
  *   const category = categorize(tx, rules)
  */
 export function useCategoryRules(): UseCategoryRulesResult {
-  const [customRules, setCustomRules] = useState<CategoryRule[]>(() =>
-    readRulesFromStorage(),
-  )
+  const [customRules, setCustomRules] = useState<CategoryRule[]>(() => {
+    // Auto-migrate any legacy pattern-based rules to the new condition format
+    const stored = readRulesFromStorage()
+    const migrated = stored.map(migrateCustomRule)
+    // If migration changed anything, persist the upgraded rules immediately
+    const didMigrate = migrated.some((r, i) => r !== stored[i])
+    if (didMigrate) persist(migrated)
+    return migrated
+  })
 
-  const rules: CategoryRule[] = [...customRules, ...DEFAULT_RULES]
+  // Memoised so that useEffect comparisons in consumers stay stable
+  const rules = useMemo<CategoryRule[]>(
+    () => [...customRules, ...DEFAULT_RULES],
+    [customRules],
+  )
 
   const addRule = useCallback(
     (rule: Omit<CategoryRule, 'id'> & { id?: string }) => {
