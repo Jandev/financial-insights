@@ -220,7 +220,11 @@ export function MonthlyPage() {
     [allMonthTxns, excludedIds],
   )
 
-  const incomeTxns = useMemo(() => monthTxns.filter((tx) => tx.amount > 0), [monthTxns])
+  const incomeTxns = useMemo(
+    // Exclude spaarpotje-withdrawal — money returning from savings is not real income
+    () => monthTxns.filter((tx) => tx.amount > 0 && tx.category !== 'spaarpotje-withdrawal'),
+    [monthTxns],
+  )
   const expenseTxns = useMemo(() => monthTxns.filter((tx) => tx.amount < 0), [monthTxns])
 
   // ── KPI totals ────────────────────────────────────────────────────────────
@@ -243,7 +247,9 @@ export function MonthlyPage() {
     const prevTxns = allActive.filter(
       (tx) => tx.date.getFullYear() === py && tx.date.getMonth() === pm,
     )
-    const prevInc = prevTxns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
+    const prevInc = prevTxns
+      .filter((t) => t.amount > 0 && t.category !== 'spaarpotje-withdrawal')
+      .reduce((s, t) => s + t.amount, 0)
     const prevExp = prevTxns
       .filter((t) => t.amount < 0)
       .reduce((s, t) => s + Math.abs(t.amount), 0)

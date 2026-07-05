@@ -5,6 +5,7 @@ import { DEFAULT_RULES } from '@/lib/categories'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 import type { Filters } from './slices/filterSlice'
+import type { SavingsAccount } from '@/types/savingsAccount'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -237,4 +238,70 @@ export function useBalanceSeries(): BalanceSeries[] {
 
     return [...byIban.entries()].map(([iban, points]) => ({ iban, points }))
   }, [transactions, excludedIds])
+}
+
+// ─── Spaarpotje balance selectors ─────────────────────────────────────────────
+
+export interface SpaarpotjeBalance {
+  /** The savings account this balance belongs to */
+  account: SavingsAccount
+  /**
+   * Net savings balance:
+   *   +amount for every `spaarpotje` tx (deposit, amount was negative)
+   *   -amount for every `spaarpotje-withdrawal` tx (withdrawal, amount was positive)
+   *
+   * Computed as: -Σ(tx.amount) for all spaarpotje-related transactions with matching tag.
+   */
+  balance: number
+  /** Count of deposit transactions */
+  depositCount: number
+  /** Count of withdrawal transactions */
+  withdrawalCount: number
+}
+
+/**
+ * Per-spaarpotje balance from tagged transactions.
+ *
+ * Accepts the list of configured savings accounts so the caller (SettingsPage,
+ * DashboardPage) controls which hook provides them — no extra hook coupling here.
+ *
+ * Uses ALL non-excluded transactions (no date filter — balance is factual).
+ */
+export function useSpaarpotjeBalances(accounts: SavingsAccount[]): SpaarpotjeBalance[] {
+  const { transactions, excludedIds } = useStore(
+    useShallow((s) => ({ transactions: s.transactions, excludedIds: s.excludedIds })),
+  )
+
+  return useMemo(() => {
+    if (!accounts.length) return []
+
+    // Build a map: potName → { balance, depositCount, withdrawalCount }
+    const map = new Map<
+      string,
+      { balance: number; depositCount: number; withdrawalCount: number }
+    >(accounts.map((a) => [a.name, { balance: 0, depositCount: 0, withdrawalCount: 0 }]))
+
+    for (const tx of transactions) {
+      if (excludedIds.has(tx.id)) continue
+      if (
+        tx.category !== 'spaarpotje' &&
+        tx.category !== 'spaarpotje-withdrawal'
+      )
+        continue
+
+      const tag = tx.tags?.[0]
+      if (!tag || !map.has(tag)) continue
+
+      const entry = map.get(tag)!
+      // -amount: deposit (amount < 0) → +balance; withdrawal (amount > 0) → -balance
+      entry.balance += -tx.amount
+      if (tx.category === 'spaarpotje') entry.depositCount += 1
+      else entry.withdrawalCount += 1
+    }
+
+    return accounts.map((account) => ({
+      account,
+      ...(map.get(account.name) ?? { balance: 0, depositCount: 0, withdrawalCount: 0 }),
+    }))
+  }, [accounts, transactions, excludedIds])
 }

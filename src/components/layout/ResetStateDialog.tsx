@@ -11,6 +11,7 @@ import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
+import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
 
 // localStorage key used by the Zustand persist middleware
 const ZUSTAND_STORAGE_KEY = 'financial-insights:store'
@@ -39,6 +40,8 @@ export function ResetStateDialog({ onClose }: ResetStateDialogProps) {
       // 3. Clear localStorage entries
       localStorage.removeItem(STORAGE_KEY_RULES)
       localStorage.removeItem(STORAGE_KEY_OVERRIDES)
+      localStorage.removeItem(STORAGE_KEY_SPAARPOTJES)
+      localStorage.removeItem(STORAGE_KEY_TAG_OVERRIDES)
       // Remove only the exclusions portion of the persisted Zustand store
       // (we keep theme). Simplest: overwrite the stored value.
       try {
@@ -93,6 +96,7 @@ export function ResetStateDialog({ onClose }: ResetStateDialogProps) {
         <li>• AI category assignments</li>
         <li>• Hidden transaction exclusions</li>
         <li>• Custom category rules</li>
+        <li>• Spaarpotje configuration</li>
         <li>• Generated insights &amp; anomalies</li>
       </ul>
       <p className="mb-3 text-[11px] text-text-muted">

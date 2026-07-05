@@ -22,6 +22,7 @@ export {
   useMonthlyTotals,
   useCategoryTotals,
   useBalanceSeries,
+  useSpaarpotjeBalances,
   matchesFilters,
 } from './selectors'
 
@@ -31,4 +32,5 @@ export type {
   CategoryTotal,
   BalancePoint,
   BalanceSeries,
+  SpaarpotjeBalance,
 } from './selectors'
