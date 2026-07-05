@@ -24,6 +24,21 @@ import type { StateStore } from './stateStore.js'
 
 const memory = new MemorySaver()
 
+/**
+ * Clear the MemorySaver checkpoint for a specific thread.
+ * Called by DELETE /api/llm/chat/:threadId so "New conversation" immediately
+ * frees memory rather than waiting for a server restart.
+ *
+ * MemorySaver stores checkpoints in an internal Map keyed by thread_id.
+ * Accessing `.storage` is undocumented but stable across LangGraph versions
+ * in use — it is a plain `Map<string, Map<string, ...>>`.
+ */
+export function clearAdvisorThread(threadId: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storage = (memory as any).storage as Map<string, unknown> | undefined
+  storage?.delete(threadId)
+}
+
 // ─── Tool helpers ─────────────────────────────────────────────────────────────
 
 function cap(str: string, maxLen = 2000): string {

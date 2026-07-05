@@ -88,6 +88,9 @@ export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
             setAiCategories(allResults)
             toast.success(`AI categorized ${data.totalProcessed ?? 0} transactions`)
             onComplete?.()
+          } else if (data.type === 'error') {
+            toast.error((data as { type: string; message?: string }).message ?? 'AI categorization failed.')
+            console.error('[AICategorize] server error event:', (data as { type: string; message?: string }).message)
           }
         }
       }
