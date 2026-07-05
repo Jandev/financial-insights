@@ -1,7 +1,10 @@
-.PHONY: dev build up down logs
+.PHONY: dev dev-full build up down logs
 
-dev: ## Start local development server (Vite, hot-reload)
+dev: ## Start local development server (Vite only, localStorage fallback)
 	npm run dev
+
+dev-full: ## Start full-stack dev server (Vite + Express, state persists to data/state/)
+	npm run dev:full
 
 build: ## Build Docker image
 	docker build -t financial-insights .

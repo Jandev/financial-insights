@@ -4,10 +4,11 @@ import { createTransactionSlice, type TransactionSlice } from './slices/transact
 import { createExclusionSlice, type ExclusionSlice } from './slices/exclusionSlice'
 import { createFilterSlice, type FilterSlice } from './slices/filterSlice'
 import { createThemeSlice, applyThemeClass, type ThemeSlice } from './slices/themeSlice'
+import { createServerStateSlice, type ServerStateSlice } from './slices/serverStateSlice'
 
 // ─── Composed store type ──────────────────────────────────────────────────────
 
-export type StoreState = TransactionSlice & ExclusionSlice & FilterSlice & ThemeSlice
+export type StoreState = TransactionSlice & ExclusionSlice & FilterSlice & ThemeSlice & ServerStateSlice
 
 // ─── Persisted shape ──────────────────────────────────────────────────────────
 // Only these fields survive a browser refresh. Everything else resets to defaults.
@@ -26,12 +27,14 @@ export const useStore = create<StoreState>()(
       ...createExclusionSlice(...args),
       ...createFilterSlice(...args),
       ...createThemeSlice(...args),
+      ...createServerStateSlice(...args),
     }),
     {
       name: 'financial-insights:store',
 
       // Only persist exclusions and theme — transactions are loaded fresh each
-      // session; filters reset intentionally on refresh.
+      // session; filters reset intentionally on refresh. Server state fields are
+      // runtime-only (determined on startup via /api/state/summary fetch).
       partialize: (state): PersistedShape => ({
         excludedIds: [...state.excludedIds],
         theme: state.theme,
