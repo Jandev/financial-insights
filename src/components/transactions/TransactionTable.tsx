@@ -175,11 +175,16 @@ export function TransactionTable({ highlightId }: Props) {
         cell: ({ getValue, row }) => {
           const amount = getValue()
           const isExcluded = excludedIds.has(row.original.id)
+          const isInternalTransfer =
+            row.original.category === 'internal-transfer' ||
+            row.original.category === 'own-account-transfer'
           return (
             <span
               className={cn(
                 'block text-right text-sm tabular-nums font-medium',
-                amount > 0 ? 'text-income' : 'text-expense',
+                isInternalTransfer
+                  ? 'text-text-muted'
+                  : amount > 0 ? 'text-income' : 'text-expense',
                 isExcluded && 'line-through',
               )}
             >
@@ -326,6 +331,9 @@ export function TransactionTable({ highlightId }: Props) {
             {rows.map((row) => {
               const isExcluded = excludedIds.has(row.original.id)
               const isHighlighted = row.original.id === highlightId
+              const isInternalTransfer =
+                row.original.category === 'internal-transfer' ||
+                row.original.category === 'own-account-transfer'
               return (
                 <tr
                   ref={isHighlighted ? highlightRowRef : undefined}
@@ -333,6 +341,7 @@ export function TransactionTable({ highlightId }: Props) {
                   className={cn(
                     'border-b border-border/50 transition-colors duration-150',
                     'hover:bg-bg-elevated/40',
+                    isInternalTransfer && !isExcluded && 'opacity-60',
                     isExcluded && 'opacity-40 bg-bg-base/50',
                     isHighlighted && 'bg-accent-dim',
                   )}
