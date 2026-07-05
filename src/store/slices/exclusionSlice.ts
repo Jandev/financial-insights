@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { StoreState } from '../useStore'
+import { debouncePut } from '@/lib/serverState'
 
 export interface ExclusionSlice {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -24,6 +25,10 @@ export interface ExclusionSlice {
   restoreFiltered: (ids: string[]) => void
 }
 
+function syncExclusions(ids: Set<string>): void {
+  debouncePut('exclusions', { ids: [...ids] })
+}
+
 export const createExclusionSlice: StateCreator<
   StoreState,
   [],
@@ -40,6 +45,7 @@ export const createExclusionSlice: StateCreator<
       } else {
         next.add(id)
       }
+      syncExclusions(next)
       return { excludedIds: next }
     }),
 
@@ -47,15 +53,20 @@ export const createExclusionSlice: StateCreator<
     set((s) => {
       const next = new Set(s.excludedIds)
       ids.forEach((id) => next.add(id))
+      syncExclusions(next)
       return { excludedIds: next }
     }),
 
-  restoreAll: () => set({ excludedIds: new Set() }),
+  restoreAll: () => {
+    syncExclusions(new Set())
+    return set({ excludedIds: new Set() })
+  },
 
   restoreFiltered: (ids) =>
     set((s) => {
       const next = new Set(s.excludedIds)
       ids.forEach((id) => next.delete(id))
+      syncExclusions(next)
       return { excludedIds: next }
     }),
 })

@@ -13,9 +13,13 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
+  Trash2,
+  Cloud,
+  HardDrive,
 } from 'lucide-react'
 import { cn, formatTime } from '@/lib/utils'
 import { useStore } from '@/store'
+import { ResetStateDialog } from './ResetStateDialog'
 
 const navItems = [
   { to: '/',              label: 'Dashboard',    Icon: LayoutDashboard },
@@ -35,7 +39,8 @@ const navItems = [
  */
 export function Sidebar() {
   const [debugOpen, setDebugOpen] = useState(false)
-  const { fileLog } = useStore()
+  const [resetOpen, setResetOpen] = useState(false)
+  const { fileLog, serverStateAvailable } = useStore()
 
   return (
     <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 flex w-[220px] flex-col">
@@ -128,16 +133,51 @@ export function Sidebar() {
         )}
       </div>
 
+      {/* Reset state dialog (shown inline above the footer) */}
+      {resetOpen && <ResetStateDialog onClose={() => setResetOpen(false)} />}
+
       {/* Separator */}
       <div className="h-px bg-border" />
 
-      {/* User footer */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <CircleUser className="h-5 w-5 text-text-secondary" strokeWidth={1.75} />
-          <span className="text-xs text-text-secondary">Jan de Vries</span>
+      {/* Footer: storage indicator + user + reset */}
+      <div className="px-3 py-2.5 space-y-2">
+        {/* Storage mode indicator */}
+        <div className="flex items-center gap-1.5">
+          {serverStateAvailable ? (
+            <>
+              <Cloud className="h-3 w-3 shrink-0 text-green-500" strokeWidth={1.75} />
+              <span className="text-[10px] text-text-muted">Server state</span>
+            </>
+          ) : (
+            <>
+              <HardDrive className="h-3 w-3 shrink-0 text-text-muted" strokeWidth={1.75} />
+              <span className="text-[10px] text-text-muted">Local storage</span>
+            </>
+          )}
         </div>
-        <Settings className="h-3.5 w-3.5 text-text-muted" strokeWidth={1.75} />
+
+        {/* User row + reset trigger */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CircleUser className="h-5 w-5 text-text-secondary" strokeWidth={1.75} />
+            <span className="text-xs text-text-secondary">Jan de Vries</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setResetOpen((o) => !o)}
+              title="Reset all state"
+              className={cn(
+                'rounded-[6px] p-1 transition-colors',
+                resetOpen
+                  ? 'bg-red-500/10 text-red-500'
+                  : 'text-text-muted hover:bg-bg-elevated hover:text-text-secondary',
+              )}
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
+            <Settings className="h-3.5 w-3.5 text-text-muted" strokeWidth={1.75} />
+          </div>
+        </div>
       </div>
     </aside>
   )
