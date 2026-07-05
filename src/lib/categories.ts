@@ -60,6 +60,31 @@ export interface CategoryRule {
 /** Per-transaction manual overrides: transactionId → categoryId */
 export type CategoryOverrides = Record<string, string>
 
+// ─── Spaarpotje category helpers ─────────────────────────────────────────────
+
+/**
+ * Category IDs that represent savings-goal movements (spaarpotjes).
+ * These are excluded from income and expense totals — moving money to/from
+ * a named savings goal is not real income or spending.
+ */
+export const SPAARPOTJE_CATEGORIES = new Set(['spaarpotje', 'spaarpotje-withdrawal'])
+
+/**
+ * Returns true if `tx` should be counted as income.
+ * Spaarpotje withdrawals (money returning from savings) are excluded.
+ */
+export function isIncomeTransaction(tx: Transaction): boolean {
+  return tx.amount > 0 && !SPAARPOTJE_CATEGORIES.has(tx.category)
+}
+
+/**
+ * Returns true if `tx` should be counted as an expense.
+ * Spaarpotje deposits (money sent to savings) are excluded.
+ */
+export function isExpenseTransaction(tx: Transaction): boolean {
+  return tx.amount < 0 && !SPAARPOTJE_CATEGORIES.has(tx.category)
+}
+
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
 export const STORAGE_KEY_RULES = 'financial-insights:category-rules'
@@ -236,6 +261,24 @@ export const DEFAULT_RULES: CategoryRule[] = [
     patterns: [],
   },
   {
+    /**
+     * Internal transfer — money sent to/from a registered personal account
+     * (pocket money account, joint grocery account, etc.).
+     * Assigned by recategorize() based on counterpartyIban matching the
+     * user's personal accounts list. The `tb` transactionCode serves as a
+     * Rabobank-specific fallback for unregistered own-account transfers.
+     *
+     * These transactions STAY in income/expense totals — the transfer IS
+     * the spending/receiving event. Only shown distinctly in the UI.
+     */
+    id: 'internal-transfer',
+    name: 'Internal Transfer',
+    color: '#8E8E93',
+    icon: 'ArrowLeftRight',
+    patterns: [],
+    transactionCodes: ['tb'],
+  },
+  {
     id: 'own-account-transfer',
     name: 'Own Account Transfer',
     color: '#8E8E93',
@@ -410,6 +453,24 @@ export function matchSpaarpotje(
     category: tx.amount < 0 ? 'spaarpotje' : 'spaarpotje-withdrawal',
     tag: match.name,
   }
+}
+
+// ─── Personal account IBAN matcher ───────────────────────────────────────────
+
+/**
+ * Check whether a transaction's counterpartyIban matches an enabled personal
+ * account. Returns true if matched, false otherwise.
+ *
+ * Priority: runs AFTER spaarpotje matching and manual overrides, BEFORE the
+ * rule engine. Spaarpotje IBANs always take priority.
+ */
+export function matchPersonalAccount(
+  tx: Transaction,
+  accounts: import('@/types/personalAccount').PersonalAccount[],
+): boolean {
+  if (!accounts.length || !tx.counterpartyIban) return false
+  const needle = tx.counterpartyIban.toLowerCase().trim()
+  return accounts.some((a) => a.enabled && a.iban.toLowerCase().trim() === needle)
 }
 
 // ─── Storage utilities (non-React — safe to call from csvLoader) ──────────────
