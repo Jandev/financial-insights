@@ -1,7 +1,6 @@
 import { Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useThemeStore } from '@/store/theme'
-import { useTransactionStore } from '@/store/transactions'
+import { useStore } from '@/store'
 
 /**
  * Window chrome bar.
@@ -15,10 +14,10 @@ import { useTransactionStore } from '@/store/transactions'
  * A 2px progress bar runs along the bottom edge while CSV files are loading.
  */
 export function WindowChrome() {
-  const { theme, toggleTheme } = useThemeStore()
+  const { theme, toggleTheme } = useStore()
   const isDark = theme === 'dark'
 
-  const { status, fileCount, loadedFiles } = useTransactionStore((s) => s.loadingState)
+  const { status, fileCount, loadedFiles } = useStore((s) => s.loadingState)
   const isLoading = status === 'idle' || status === 'loading'
   const pct = fileCount > 0 ? (loadedFiles / fileCount) * 100 : 0
 

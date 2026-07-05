@@ -1,22 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { loadAllTransactions } from '@/lib/csvLoader'
-import { useTransactionStore } from '@/store/transactions'
+import { useStore } from '@/store'
 import type { LoadingState } from '@/types/loader'
 
 /**
- * Triggers CSV loading on mount and writes results + progress into the
- * transaction store. Loading fires exactly once per app session.
+ * Triggers CSV loading on mount and writes results + progress into the store.
+ * Loading fires exactly once per app session.
  *
- * Render a `<LoadingScreen>` while `loadingState.status` is `'idle'` or
- * `'loading'`; switch to the main layout when it becomes `'success'` or
- * `'error'`.
+ * Render a <LoadingScreen> while loadingState.status is 'idle' or 'loading';
+ * switch to the main layout when it becomes 'success' or 'error'.
  *
- * @returns `{ loadingState }` — same object as `useTransactionStore().loadingState`
+ * @returns `{ loadingState }` — same object as `useStore().loadingState`
  */
 export function useTransactionLoader() {
-  const { loadingState, setTransactions, setLoadingState, logFile } = useTransactionStore()
+  const { loadingState, setTransactions, setLoadingState, logFile } = useStore()
 
-  // Guard against React Strict Mode double-invocation and re-renders
   const hasStartedRef = useRef(false)
 
   useEffect(() => {
