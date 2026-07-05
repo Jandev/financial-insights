@@ -73,6 +73,85 @@ See `.env.example` for the full documented template.
 
 ---
 
+## Hosting on a NAS (GHCR)
+
+Pre-build the image locally, push it to GitHub Container Registry, and pull it on the NAS. No source code or build tools required on the NAS.
+
+### 1. Create GitHub Personal Access Tokens
+
+Go to **GitHub → Settings → Developer settings → Personal access tokens**.
+
+| Token | Scope | Used for |
+|---|---|---|
+| Local (push) | `write:packages` | Pushing the image from your machine |
+| NAS (pull) | `read:packages` | Pulling the image on the NAS |
+
+Use separate tokens so the NAS token is minimal-privilege.
+
+### 2. Build and push the image (local machine)
+
+```bash
+# Log in to GHCR
+docker login ghcr.io -u YOUR_GITHUB_USERNAME -p YOUR_PUSH_PAT
+
+# Build and tag
+docker build -t ghcr.io/YOUR_GITHUB_USERNAME/financial-insights:latest .
+
+# Push
+docker push ghcr.io/YOUR_GITHUB_USERNAME/financial-insights:latest
+```
+
+Repeat the build + push whenever you want to deploy a new version.
+
+### 3. Authenticate on the NAS (one-time)
+
+SSH into the NAS and run:
+
+```bash
+docker login ghcr.io -u YOUR_GITHUB_USERNAME -p YOUR_PULL_PAT
+```
+
+Credentials are stored in `~/.docker/config.json` and reused automatically.
+
+### 4. docker-compose.yml on the NAS
+
+Replace the local `build:` reference with the registry image:
+
+```yaml
+services:
+  financial-insights:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/financial-insights:latest
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data/transactions:/app/data/transactions:ro
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+```
+
+### 5. Deploy on the NAS
+
+```bash
+# Pull latest image and start
+docker compose pull
+docker compose up -d
+```
+
+To update to a newer image after pushing from your local machine:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+---
+
 ## Quick Start — Local Dev
 
 Requires Node.js 22+ and npm 10+.
