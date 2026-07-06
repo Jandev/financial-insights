@@ -5,8 +5,8 @@
  * `internal-transfer` and shown distinctly in the UI. They still count
  * toward income/expense totals (unlike spaarpotjes).
  *
- * Auto-detected entries are seeded from Rabobank `tb` (own-bank-transfer)
- * counterparty IBANs on first CSV load. Users can disable or delete them.
+ * Only manual registration is supported — accounts are added via
+ * Settings → Personal Accounts. There is no automatic detection.
  *
  * Persisted to localStorage (`financial-insights:personal-accounts`) and
  * synced to the Express state API (`/api/state/personal-accounts`) when
@@ -19,7 +19,7 @@ export interface PersonalAccount {
   label: string
   /** Account type hint for display */
   type: 'payment' | 'savings' | 'joint' | 'other'
-  /** true = seeded by Rabobank tb-scan, false = added manually */
+  /** Always false — kept for schema compatibility with existing persisted data */
   autoDetected: boolean
   /** When false, this account is ignored during categorization */
   enabled: boolean

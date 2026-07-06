@@ -5,11 +5,9 @@ import {
   mergeRules,
   readRulesFromStorage,
   readOverridesFromStorage,
+  INTERNAL_TRANSFER_RULE_IDS,
 } from '@/lib/categories'
-import {
-  readPersonalAccountsFromStorage,
-  seedAutoDetectedIbans,
-} from '@/lib/personalAccounts'
+import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
 import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
 
@@ -153,22 +151,11 @@ async function processFiles(
   // Done once after all files are parsed so that rule evaluation has access
   // to the full transaction set (relevant for future cross-transaction rules).
 
-  // ── Step 1: Auto-detect personal accounts from Rabobank `tb` transfers ───
-  // Collect unique counterparty IBANs from own-bank-transfer transactions and
-  // seed any unseen ones as auto-detected personal accounts in localStorage.
-  const tbIbans = new Set<string>()
-  for (const tx of all) {
-    if (tx.transactionCode === 'tb' && tx.counterpartyIban) {
-      tbIbans.add(tx.counterpartyIban)
-    }
-  }
-  if (tbIbans.size > 0) {
-    seedAutoDetectedIbans([...tbIbans])
-  }
-
-  // ── Step 2: Build categorization inputs ──────────────────────────────────
+  // ── Step 1: Build categorization inputs ──────────────────────────────────
   const customRules = readRulesFromStorage()
-  const rules = mergeRules(customRules)
+  // Exclude the tb-based internal-transfer fallback rules — transfers are only
+  // recognised when the counterparty IBAN is explicitly added to Personal Accounts.
+  const rules = mergeRules(customRules).filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
   const overrides = readOverridesFromStorage()
   const personalAccounts = readPersonalAccountsFromStorage()
 
@@ -184,7 +171,7 @@ async function processFiles(
       return tx.category === 'internal-transfer' ? tx : { ...tx, category: 'internal-transfer' }
     }
 
-    // Rule-engine fallback (includes `tb` → `internal-transfer` via DEFAULT_RULES)
+    // Rule-engine fallback (tb without a matching personal account → uncategorized)
     const ruleCategory = categorize(tx, rules)
     return ruleCategory === tx.category ? tx : { ...tx, category: ruleCategory }
   })

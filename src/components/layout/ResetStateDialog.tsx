@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
 import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
+import { STORAGE_KEY_PERSONAL_ACCOUNTS } from '@/lib/personalAccounts'
 
 // localStorage key used by the Zustand persist middleware
 const ZUSTAND_STORAGE_KEY = 'financial-insights:store'
@@ -42,6 +43,7 @@ export function ResetStateDialog({ onClose }: ResetStateDialogProps) {
       localStorage.removeItem(STORAGE_KEY_OVERRIDES)
       localStorage.removeItem(STORAGE_KEY_SPAARPOTJES)
       localStorage.removeItem(STORAGE_KEY_TAG_OVERRIDES)
+      localStorage.removeItem(STORAGE_KEY_PERSONAL_ACCOUNTS)
       // Remove only the exclusions portion of the persisted Zustand store
       // (we keep theme). Simplest: overwrite the stored value.
       try {
