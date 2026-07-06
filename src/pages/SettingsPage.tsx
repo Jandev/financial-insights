@@ -931,7 +931,7 @@ export function SettingsPage() {
       {/* ── 2. Personal Accounts ─────────────────────────────────────────────── */}
       <Section
         title="Personal Accounts"
-        description="IBANs you own or share (pocket money, joint grocery account, etc.). Transfers to/from these IBANs are shown as Internal Transfers and still count toward totals."
+        description="IBANs you own or share (pocket money, joint grocery account, etc.). If no category rule matches, transfers to/from these IBANs fall back to Internal Transfer and still count toward totals."
       >
         <Card padding="none">
           {personalAccounts.length === 0 && !showPersonalAddForm ? (

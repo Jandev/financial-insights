@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { ExclusionToggle } from '@/components/transactions/ExclusionToggle'
+import { ExpandableTransactionText } from '@/components/transactions/ExpandableTransactionText'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
@@ -60,12 +61,21 @@ function TxList({
                   <span className="shrink-0 text-xs tabular-nums text-text-muted">
                     {formatDate(tx.date)}
                   </span>
-                  <span className="truncate text-sm font-medium text-text-primary">
-                    {tx.counterpartyName || '—'}
-                  </span>
+                  <ExpandableTransactionText
+                    text={tx.counterpartyName}
+                    emptyText="—"
+                    contentLabel="Counterparty"
+                    stopPropagation={true}
+                    previewClassName="truncate text-sm font-medium text-text-primary"
+                  />
                 </div>
                 {tx.description && (
-                  <p className="mt-0.5 truncate text-[11px] text-text-muted">{tx.description}</p>
+                  <ExpandableTransactionText
+                    text={tx.description}
+                    contentLabel="Description"
+                    stopPropagation={true}
+                    previewClassName="mt-0.5 truncate text-[11px] text-text-muted"
+                  />
                 )}
               </div>
 

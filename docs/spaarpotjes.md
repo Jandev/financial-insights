@@ -48,7 +48,7 @@ These are different concepts:
 | | Spaarpotjes | Personal Accounts |
 |---|---|---|
 | Purpose | Named savings goals | Own payment/savings accounts |
-| Category | `spaarpotje` / `spaarpotje-withdrawal` | `internal-transfer` |
+| Category | `spaarpotje` / `spaarpotje-withdrawal` | `internal-transfer` (fallback when rules do not match) |
 | Included in totals | No — excluded | Yes — included |
 | Auto-detected | No — manual registration | No — manual registration |
 

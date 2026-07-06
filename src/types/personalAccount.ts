@@ -1,9 +1,9 @@
 /**
  * A personal account IBAN registered by the user.
  *
- * Transactions to/from `iban` are automatically assigned category
- * `internal-transfer` and shown distinctly in the UI. They still count
- * toward income/expense totals (unlike spaarpotjes).
+ * Transactions to/from `iban` can fall back to category `internal-transfer`
+ * when no higher-priority rule matches. They are shown distinctly in the UI
+ * and still count toward income/expense totals (unlike spaarpotjes).
  *
  * Only manual registration is supported — accounts are added via
  * Settings → Personal Accounts. There is no automatic detection.

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { CategoryBadge } from '@/components/transactions/CategoryBadge'
 import { ExclusionToggle } from '@/components/transactions/ExclusionToggle'
+import { ExpandableTransactionText } from '@/components/transactions/ExpandableTransactionText'
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import type { Transaction } from '@/types/transaction'
 
@@ -82,13 +83,18 @@ export function MonthlyTransactionList({ transactions, excludedIds, activeFilter
 
                 {/* Counterparty */}
                 <td className="py-2 pr-4">
-                  <span className="block max-w-[200px] truncate text-xs text-text-primary">
-                    {tx.counterpartyName || '(unknown)'}
-                  </span>
+                  <ExpandableTransactionText
+                    text={tx.counterpartyName}
+                    emptyText="(unknown)"
+                    contentLabel="Counterparty"
+                    previewClassName="max-w-[220px] md:max-w-[320px] truncate text-xs text-text-primary"
+                  />
                   {tx.description && (
-                    <span className="block max-w-[200px] truncate text-[10px] text-text-muted">
-                      {tx.description}
-                    </span>
+                    <ExpandableTransactionText
+                      text={tx.description}
+                      contentLabel="Description"
+                      previewClassName="mt-0.5 max-w-[220px] md:max-w-[320px] truncate text-[10px] text-text-muted"
+                    />
                   )}
                 </td>
 

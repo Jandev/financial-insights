@@ -3,12 +3,11 @@ import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
 import { initialLoadingState } from '@/types/loader'
 import {
-  categorize,
+  categorizeWithPersonalFallback,
   mergeRules,
   readRulesFromStorage,
   readOverridesFromStorage,
   matchSpaarpotje,
-  matchPersonalAccount,
   INTERNAL_TRANSFER_RULE_IDS,
 } from '@/lib/categories'
 import {
@@ -90,14 +89,9 @@ export const createTransactionSlice: StateCreator<
         return { ...tx, category: manualOverride, tags }
       }
 
-      // 3. Personal account IBAN match → internal-transfer (manual accounts only)
-      if (matchPersonalAccount(tx, personalAccounts)) {
-        const tags = tagOverrides[tx.id] ?? []
-        return { ...tx, category: 'internal-transfer', tags }
-      }
-
-      // 4. Rule-based categorization (tb without matching personal account → uncategorized)
-      const category = categorize(tx, rules)
+      // 3. Rule engine first; personal-account fallback applies only when
+      //    no rule matches (uncategorized).
+      const category = categorizeWithPersonalFallback(tx, rules, personalAccounts)
       const tags = tagOverrides[tx.id] ?? []
 
       return category === tx.category && tags.length === 0 && (tx.tags ?? []).length === 0

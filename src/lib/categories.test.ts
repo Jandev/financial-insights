@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   categorize,
+  categorizeWithPersonalFallback,
   DEFAULT_RULES,
   mergeRules,
   readRulesFromStorage,
@@ -335,6 +336,63 @@ describe('INTERNAL_TRANSFER_RULE_IDS filter', () => {
     const filtered = DEFAULT_RULES.filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
     const tx = makeTx({ transactionCode: 'tb', counterpartyName: '' })
     expect(categorize(tx, filtered)).toBe('uncategorized')
+  })
+})
+
+// ─── categorizeWithPersonalFallback — rules first, personal fallback ──────────
+
+describe('categorizeWithPersonalFallback', () => {
+  it('custom rule wins over personal-account fallback', () => {
+    const tx = makeTx({
+      counterpartyIban: 'NL00RABO0000000002',
+      counterpartyName: 'Any Counterparty',
+      description: 'Pocket money transfer',
+    })
+    const customRules: CategoryRule[] = [
+      {
+        id: 'custom-pocket-money',
+        name: 'Pocket Money',
+        color: '#000',
+        icon: 'PiggyBank',
+        conditions: [
+          {
+            id: 'cond-1',
+            field: 'description',
+            operator: 'contains',
+            value: 'pocket money',
+          },
+        ],
+        combinator: 'and',
+      },
+    ]
+    const rules = mergeRules(customRules).filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
+
+    const category = categorizeWithPersonalFallback(tx, rules, [makeAccount()])
+    expect(category).toBe('custom-pocket-money')
+  })
+
+  it('default rule wins over personal-account fallback', () => {
+    const tx = makeTx({
+      counterpartyIban: 'NL00RABO0000000002',
+      counterpartyName: 'Albert Heijn',
+      description: 'Boodschappen',
+    })
+    const rules = DEFAULT_RULES.filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
+
+    const category = categorizeWithPersonalFallback(tx, rules, [makeAccount()])
+    expect(category).toBe('groceries')
+  })
+
+  it('falls back to internal-transfer only when rules return uncategorized', () => {
+    const tx = makeTx({
+      counterpartyIban: 'NL00RABO0000000002',
+      counterpartyName: 'Unknown Name',
+      description: 'Random transfer',
+    })
+    const rules = DEFAULT_RULES.filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
+
+    const category = categorizeWithPersonalFallback(tx, rules, [makeAccount()])
+    expect(category).toBe('internal-transfer')
   })
 })
 

@@ -1,7 +1,6 @@
 import { parseFile } from '@/lib/parsers/index'
 import {
-  categorize,
-  matchPersonalAccount,
+  categorizeWithPersonalFallback,
   mergeRules,
   readRulesFromStorage,
   readOverridesFromStorage,
@@ -166,13 +165,8 @@ async function processFiles(
       return manualOverride === tx.category ? tx : { ...tx, category: manualOverride }
     }
 
-    // Personal account IBAN match → internal-transfer
-    if (matchPersonalAccount(tx, personalAccounts)) {
-      return tx.category === 'internal-transfer' ? tx : { ...tx, category: 'internal-transfer' }
-    }
-
-    // Rule-engine fallback (tb without a matching personal account → uncategorized)
-    const ruleCategory = categorize(tx, rules)
-    return ruleCategory === tx.category ? tx : { ...tx, category: ruleCategory }
+    // Rule engine first; personal-account fallback only when uncategorized.
+    const category = categorizeWithPersonalFallback(tx, rules, personalAccounts)
+    return category === tx.category ? tx : { ...tx, category }
   })
 }

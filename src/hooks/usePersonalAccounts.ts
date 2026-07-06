@@ -5,8 +5,8 @@
  *   - Primary:  localStorage `financial-insights:personal-accounts`
  *   - Secondary: debounced PUT /api/state/personal-accounts (when Express is available)
  *
- * After every mutation `recategorize()` is called so that transactions with
- * matching counterpartyIbans are immediately re-labelled as `internal-transfer`.
+ * After every mutation `recategorize()` is called so personal-account fallback
+ * can be re-applied for transactions still uncategorized after rule matching.
  *
  * Pattern mirrors `useSavingsAccounts`.
  */

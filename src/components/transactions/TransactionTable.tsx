@@ -20,6 +20,7 @@ import type { AnomalyFinding } from '@/store/slices/llmSlice'
 import { TypeBadge } from './TypeBadge'
 import { ExclusionToggle } from './ExclusionToggle'
 import { CategoryBadge } from './CategoryBadge'
+import { ExpandableTransactionText } from './ExpandableTransactionText'
 import { Tooltip } from '@/components/ui/Tooltip'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -147,12 +148,12 @@ export function TransactionTable({ highlightId }: Props) {
         cell: ({ getValue }) => {
           const name = getValue()
           return (
-            <span
-              title={name}
-              className="block truncate max-w-[188px] text-sm font-medium text-text-primary"
-            >
-              {name || '—'}
-            </span>
+            <ExpandableTransactionText
+              text={name}
+              emptyText="—"
+              contentLabel="Counterparty"
+              previewClassName="truncate max-w-[188px] text-sm font-medium text-text-primary"
+            />
           )
         },
         sortingFn: 'alphanumeric',
@@ -165,12 +166,12 @@ export function TransactionTable({ highlightId }: Props) {
         cell: ({ getValue }) => {
           const desc = getValue()
           return (
-            <span
-              title={desc}
-              className="block truncate max-w-[238px] text-xs text-text-secondary"
-            >
-              {desc || '—'}
-            </span>
+            <ExpandableTransactionText
+              text={desc}
+              emptyText="—"
+              contentLabel="Description"
+              previewClassName="truncate max-w-[238px] text-xs text-text-secondary"
+            />
           )
         },
       }),
