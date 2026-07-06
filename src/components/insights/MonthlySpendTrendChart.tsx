@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   type TooltipContentProps,
 } from 'recharts'
-import { DEFAULT_RULES } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 
@@ -17,18 +17,10 @@ import type { Transaction } from '@/types/transaction'
 
 const MAX_CATEGORIES = 8
 
-// ─── Category meta ────────────────────────────────────────────────────────────
-
-const CATEGORY_META = new Map(DEFAULT_RULES.map((r) => [r.id, { name: r.name, color: r.color }]))
-
-function getCatMeta(id: string) {
-  return CATEGORY_META.get(id) ?? { name: id || 'Uncategorized', color: '#8E8E93' }
-}
-
 // ─── Data computation ─────────────────────────────────────────────────────────
 
 interface CategoryLine {
-  id: string
+  key: string
   name: string
   color: string
 }
@@ -38,22 +30,35 @@ interface ChartResult {
   categories: CategoryLine[]
 }
 
-function buildChartData(transactions: Transaction[]): ChartResult {
+function buildChartData(
+  transactions: Transaction[],
+  categoryMetaById: Map<string, { name: string; color: string }>,
+): ChartResult {
   const expenses = transactions.filter((tx) => tx.amount < 0)
 
-  // Find top categories by total spend
-  const catTotals = new Map<string, number>()
+  // Find top display-name groups by total spend
+  const catTotals = new Map<string, { total: number; color: string }>()
   for (const tx of expenses) {
-    catTotals.set(tx.category, (catTotals.get(tx.category) ?? 0) + Math.abs(tx.amount))
+    const meta = categoryMetaById.get(tx.category) ?? {
+      name: tx.category || 'Uncategorized',
+      color: '#8E8E93',
+    }
+    const current = catTotals.get(meta.name)
+    if (current) {
+      current.total += Math.abs(tx.amount)
+      continue
+    }
+    catTotals.set(meta.name, { total: Math.abs(tx.amount), color: meta.color })
   }
-  const topIds = [...catTotals.entries()]
-    .sort((a, b) => b[1] - a[1])
+
+  const topCategories = [...catTotals.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
     .slice(0, MAX_CATEGORIES)
-    .map(([id]) => id)
+    .map(([name, meta]) => ({ key: name, name, color: meta.color }))
 
-  if (topIds.length === 0) return { data: [], categories: [] }
+  if (topCategories.length === 0) return { data: [], categories: [] }
 
-  const topIdSet = new Set(topIds)
+  const topNameSet = new Set(topCategories.map((c) => c.name))
 
   // Aggregate by month + category
   const monthMap = new Map<
@@ -62,7 +67,12 @@ function buildChartData(transactions: Transaction[]): ChartResult {
   >()
 
   for (const tx of expenses) {
-    if (!topIdSet.has(tx.category)) continue
+    const meta = categoryMetaById.get(tx.category) ?? {
+      name: tx.category || 'Uncategorized',
+      color: '#8E8E93',
+    }
+    if (!topNameSet.has(meta.name)) continue
+
     const year = tx.date.getFullYear()
     const month = tx.date.getMonth()
     const key = `${year}-${String(month).padStart(2, '0')}`
@@ -73,22 +83,19 @@ function buildChartData(transactions: Transaction[]): ChartResult {
       monthMap.set(key, { label, year, month, amounts: new Map() })
     }
     const entry = monthMap.get(key)!
-    entry.amounts.set(tx.category, (entry.amounts.get(tx.category) ?? 0) + Math.abs(tx.amount))
+    entry.amounts.set(meta.name, (entry.amounts.get(meta.name) ?? 0) + Math.abs(tx.amount))
   }
 
   const months = [...monthMap.values()].sort((a, b) =>
     a.year !== b.year ? a.year - b.year : a.month - b.month,
   )
 
-  const categories: CategoryLine[] = topIds.map((id) => {
-    const meta = getCatMeta(id)
-    return { id, name: meta.name, color: meta.color }
-  })
+  const categories: CategoryLine[] = topCategories
 
   const data = months.map(({ label, amounts }) => {
     const point: Record<string, string | number> = { label }
     for (const cat of categories) {
-      point[cat.name] = amounts.get(cat.id) ?? 0
+      point[cat.name] = amounts.get(cat.name) ?? 0
     }
     return point
   })
@@ -138,8 +145,28 @@ interface Props {
 
 export function MonthlySpendTrendChart({ transactions }: Props) {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const { rules } = useCategoryRules()
 
-  const { data, categories } = useMemo(() => buildChartData(transactions), [transactions])
+  const categoryMetaById = useMemo(() => {
+    const colorByName = new Map<string, string>()
+    for (const rule of rules) {
+      if (!colorByName.has(rule.name)) colorByName.set(rule.name, rule.color)
+    }
+
+    const byId = new Map<string, { name: string; color: string }>()
+    for (const rule of rules) {
+      byId.set(rule.id, {
+        name: rule.name,
+        color: colorByName.get(rule.name) ?? rule.color,
+      })
+    }
+    return byId
+  }, [rules])
+
+  const { data, categories } = useMemo(
+    () => buildChartData(transactions, categoryMetaById),
+    [transactions, categoryMetaById],
+  )
 
   function toggleCategory(name: string) {
     setHidden((prev) => {
@@ -166,7 +193,7 @@ export function MonthlySpendTrendChart({ transactions }: Props) {
           const isHidden = hidden.has(cat.name)
           return (
             <button
-              key={cat.id}
+              key={cat.key}
               type="button"
               onClick={() => toggleCategory(cat.name)}
               className={cn(
@@ -206,7 +233,7 @@ export function MonthlySpendTrendChart({ transactions }: Props) {
           <Tooltip content={ChartTooltip} cursor={{ stroke: 'var(--border)', strokeWidth: 1 }} />
           {categories.map((cat) => (
             <Line
-              key={cat.id}
+              key={cat.key}
               type="monotone"
               dataKey={cat.name}
               stroke={cat.color}

@@ -5,7 +5,6 @@ import { useActiveTransactions } from '@/store/selectors'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useStore } from '@/store'
 import type { CategoryRule } from '@/lib/categories'
-import type { CategoryTotal } from '@/store/selectors'
 import { CategoryBarChart } from '@/components/categories/CategoryBarChart'
 import { DrilldownPanel } from '@/components/categories/DrilldownPanel'
 import { RuleEditor } from '@/components/categories/RuleEditor'
@@ -22,33 +21,53 @@ function monthKeyToLabel(key: string): string {
   )
 }
 
+interface GroupedCategoryTotal {
+  groupKey: string
+  categoryIds: string[]
+  name: string
+  color: string
+  icon: string
+  total: number
+  count: number
+  percentage: number
+}
+
 function buildCategoryTotals(
   transactions: ReturnType<typeof useActiveTransactions>,
   rules: CategoryRule[],
-): CategoryTotal[] {
+): GroupedCategoryTotal[] {
   const meta = new Map(rules.map((r) => [r.id, { name: r.name, color: r.color, icon: r.icon }]))
-  const map = new Map<string, { total: number; count: number }>()
+  const map = new Map<string, Omit<GroupedCategoryTotal, 'percentage'>>()
 
   for (const tx of transactions) {
-    const entry = map.get(tx.category) ?? { total: 0, count: 0 }
-    entry.total += Math.abs(tx.amount)
-    entry.count += 1
-    map.set(tx.category, entry)
+    const m = meta.get(tx.category)
+    const groupKey = m?.name ?? tx.category
+    const existing = map.get(groupKey)
+    if (existing) {
+      existing.total += Math.abs(tx.amount)
+      existing.count += 1
+      if (!existing.categoryIds.includes(tx.category)) existing.categoryIds.push(tx.category)
+      continue
+    }
+
+    map.set(groupKey, {
+      groupKey,
+      categoryIds: [tx.category],
+      name: groupKey,
+      color: m?.color ?? '#8E8E93',
+      icon: m?.icon ?? 'HelpCircle',
+      total: Math.abs(tx.amount),
+      count: 1,
+    })
   }
 
   const grandTotal = [...map.values()].reduce((s, v) => s + v.total, 0)
 
-  return [...map.entries()]
-    .map(([categoryId, { total, count }]) => {
-      const m = meta.get(categoryId)
+  return [...map.values()]
+    .map((group) => {
       return {
-        categoryId,
-        name: m?.name ?? categoryId,
-        color: m?.color ?? '#8E8E93',
-        icon: m?.icon ?? 'HelpCircle',
-        total,
-        count,
-        percentage: grandTotal > 0 ? (total / grandTotal) * 100 : 0,
+        ...group,
+        percentage: grandTotal > 0 ? (group.total / grandTotal) * 100 : 0,
       }
     })
     .sort((a, b) => b.total - a.total)
@@ -63,7 +82,7 @@ export function CategoriesPage() {
   const recategorize = useStore((s) => s.recategorize)
   const aiCategories = useStore((s) => s.aiCategories)
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [showAIOnly, setShowAIOnly] = useState(false)
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
 
@@ -124,15 +143,15 @@ export function CategoriesPage() {
 
   // Selected category metadata
   const selectedCategory = useMemo(
-    () => categoryTotals.find((c) => c.categoryId === selectedId) ?? null,
-    [categoryTotals, selectedId],
+    () => categoryTotals.find((c) => c.groupKey === selectedKey) ?? null,
+    [categoryTotals, selectedKey],
   )
 
   // Transactions for the drilldown
   const drilldownTransactions = useMemo(() => {
-    if (!selectedId) return []
-    return displayTransactions.filter((tx) => tx.category === selectedId)
-  }, [displayTransactions, selectedId])
+    if (!selectedCategory) return []
+    return displayTransactions.filter((tx) => selectedCategory.categoryIds.includes(tx.category))
+  }, [displayTransactions, selectedCategory])
 
   // ── Rule mutations (always followed by recategorize) ──────────────────────
   const handleAddRule = useCallback(
@@ -177,7 +196,7 @@ export function CategoriesPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
 
-  const drilldownOpen = selectedId !== null && selectedCategory !== null
+  const drilldownOpen = selectedKey !== null && selectedCategory !== null
 
   return (
     <div className="space-y-4">
@@ -189,7 +208,7 @@ export function CategoriesPage() {
             <MonthNavigator
               months={months}
               selected={selectedMonthKey}
-              onChange={(key) => { setSelectedMonthKey(key); setSelectedId(null) }}
+              onChange={(key) => { setSelectedMonthKey(key); setSelectedKey(null) }}
             />
           )}
           {hasAiCategories && (
@@ -218,8 +237,8 @@ export function CategoriesPage() {
         </h2>
         <CategoryBarChart
           data={categoryTotals}
-          selectedId={selectedId}
-          onSelect={(id) => setSelectedId((prev) => (prev === id ? null : id))}
+          selectedKey={selectedKey}
+          onSelect={(key) => setSelectedKey((prev) => (prev === key ? null : key))}
         />
       </Card>
 
@@ -235,11 +254,11 @@ export function CategoriesPage() {
         {drilldownOpen && (
           <Card padding="lg" className="min-h-[320px] flex flex-col">
             <DrilldownPanel
-              categoryId={selectedCategory.categoryId}
+              categoryIds={selectedCategory.categoryIds}
               name={selectedCategory.name}
               color={selectedCategory.color}
               transactions={drilldownTransactions}
-              onClose={() => setSelectedId(null)}
+              onClose={() => setSelectedKey(null)}
             />
           </Card>
         )}

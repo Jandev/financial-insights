@@ -4,7 +4,8 @@ import { formatCurrency } from '@/lib/utils'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BarListItem {
-  categoryId: string
+  groupKey: string
+  categoryIds: string[]
   name: string
   color: string
   total: number
@@ -13,13 +14,13 @@ export interface BarListItem {
 
 interface Props {
   items: BarListItem[]
-  selectedId: string | null
-  onSelect: (id: string | null) => void
+  selectedKey: string | null
+  onSelect: (key: string | null) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CategoryBarList({ items, selectedId, onSelect }: Props) {
+export function CategoryBarList({ items, selectedKey, onSelect }: Props) {
   if (items.length === 0) {
     return (
       <p className="py-2 text-xs text-text-muted">No data</p>
@@ -29,14 +30,14 @@ export function CategoryBarList({ items, selectedId, onSelect }: Props) {
   return (
     <ul className="space-y-2">
       {items.map((item) => {
-        const isSelected = selectedId === item.categoryId
-        const isDimmed = selectedId !== null && !isSelected
+        const isSelected = selectedKey === item.groupKey
+        const isDimmed = selectedKey !== null && !isSelected
 
         return (
-          <li key={item.categoryId}>
+          <li key={item.groupKey}>
             <button
               type="button"
-              onClick={() => onSelect(isSelected ? null : item.categoryId)}
+              onClick={() => onSelect(isSelected ? null : item.groupKey)}
               className={cn(
                 'group w-full rounded-[6px] px-1.5 py-1 text-left transition-colors',
                 'hover:bg-bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',

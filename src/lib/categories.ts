@@ -1,5 +1,6 @@
 import type { Transaction, TransactionCode } from '@/types/transaction'
 import type { SavingsAccount } from '@/types/savingsAccount'
+import type { PersonalAccount } from '@/types/personalAccount'
 
 // ─── Condition types ──────────────────────────────────────────────────────────
 
@@ -479,16 +480,33 @@ export function matchSpaarpotje(
  * Check whether a transaction's counterpartyIban matches an enabled personal
  * account. Returns true if matched, false otherwise.
  *
- * Priority: runs AFTER spaarpotje matching and manual overrides, BEFORE the
- * rule engine. Spaarpotje IBANs always take priority.
+ * Priority: runs as a fallback AFTER the rule engine. Spaarpotje/manual
+ * precedence is handled by callers before this matcher is consulted.
  */
 export function matchPersonalAccount(
   tx: Transaction,
-  accounts: import('@/types/personalAccount').PersonalAccount[],
+  accounts: PersonalAccount[],
 ): boolean {
   if (!accounts.length || !tx.counterpartyIban) return false
   const needle = tx.counterpartyIban.toLowerCase().trim()
   return accounts.some((a) => a.enabled && a.iban.toLowerCase().trim() === needle)
+}
+
+/**
+ * Categorize a transaction with personal-account fallback.
+ *
+ * Priority: rule engine first (custom + default), personal accounts after.
+ * If a rule matches, its category wins. Only uncategorized transactions can
+ * fall back to `internal-transfer` via personal-account IBAN matching.
+ */
+export function categorizeWithPersonalFallback(
+  tx: Transaction,
+  rules: CategoryRule[],
+  personalAccounts: PersonalAccount[],
+): string {
+  const ruleCategory = categorize(tx, rules)
+  if (ruleCategory !== 'uncategorized') return ruleCategory
+  return matchPersonalAccount(tx, personalAccounts) ? 'internal-transfer' : ruleCategory
 }
 
 // ─── Storage utilities (non-React — safe to call from csvLoader) ──────────────

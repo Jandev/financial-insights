@@ -9,13 +9,21 @@ import {
   type TooltipContentProps,
 } from 'recharts'
 import { cn, formatCurrency } from '@/lib/utils'
-import type { CategoryTotal } from '@/store/selectors'
+
+interface CategoryBarDatum {
+  groupKey: string
+  name: string
+  color: string
+  total: number
+  count: number
+  percentage: number
+}
 
 // ─── Custom tooltip ───────────────────────────────────────────────────────────
 
 function CategoryTooltip({ active, payload }: TooltipContentProps) {
   if (!active || !payload || payload.length === 0) return null
-  const d = payload[0].payload as CategoryTotal
+  const d = payload[0].payload as CategoryBarDatum
   return (
     <div className="glass-elevated rounded-lg p-2.5 text-xs space-y-1 min-w-[160px]">
       <div className="flex items-center gap-1.5 font-semibold text-text-primary">
@@ -34,14 +42,14 @@ function CategoryTooltip({ active, payload }: TooltipContentProps) {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface CategoryBarChartProps {
-  data: CategoryTotal[]
-  selectedId: string | null
-  onSelect: (categoryId: string) => void
+  data: CategoryBarDatum[]
+  selectedKey: string | null
+  onSelect: (groupKey: string) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CategoryBarChart({ data, selectedId, onSelect }: CategoryBarChartProps) {
+export function CategoryBarChart({ data, selectedKey, onSelect }: CategoryBarChartProps) {
   if (data.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-text-muted">
@@ -89,13 +97,13 @@ export function CategoryBarChart({ data, selectedId, onSelect }: CategoryBarChar
           cursor="pointer"
           maxBarSize={28}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onClick={(barData: any) => onSelect((barData as CategoryTotal).categoryId)}
+          onClick={(barData: any) => onSelect((barData as CategoryBarDatum).groupKey)}
         >
           {data.map((entry) => (
             <Cell
-              key={entry.categoryId}
+              key={entry.groupKey}
               fill={entry.color}
-              opacity={selectedId && selectedId !== entry.categoryId ? 0.4 : 1}
+              opacity={selectedKey && selectedKey !== entry.groupKey ? 0.4 : 1}
               className={cn('transition-opacity duration-150')}
             />
           ))}

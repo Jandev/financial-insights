@@ -12,7 +12,8 @@ import { formatCurrency } from '@/lib/utils'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DonutSlice {
-  categoryId: string
+  groupKey: string
+  categoryIds: string[]
   name: string
   color: string
   total: number
@@ -25,9 +26,9 @@ interface Props {
   centerTotal: number
   /** Label above the total, e.g. "Income" or "Expenses" */
   centerLabel: string
-  /** Currently selected category id, or null */
-  selectedId: string | null
-  onSelect: (id: string | null) => void
+  /** Currently selected group key, or null */
+  selectedKey: string | null
+  onSelect: (key: string | null) => void
 }
 
 // ─── Active shape (enlarged on hover) ────────────────────────────────────────
@@ -57,15 +58,15 @@ export function CategoryDonut({
   slices,
   centerTotal,
   centerLabel,
-  selectedId,
+  selectedKey,
   onSelect,
 }: Props) {
   const handleClick = useCallback(
     (_: unknown, index: number) => {
-      const id = slices[index]?.categoryId ?? null
-      onSelect(selectedId === id ? null : id)
+      const key = slices[index]?.groupKey ?? null
+      onSelect(selectedKey === key ? null : key)
     },
-    [slices, selectedId, onSelect],
+    [slices, selectedKey, onSelect],
   )
 
   if (slices.length === 0) {
@@ -95,10 +96,10 @@ export function CategoryDonut({
           >
             {slices.map((slice) => (
               <Cell
-                key={slice.categoryId}
+                key={slice.groupKey}
                 fill={slice.color}
                 opacity={
-                  selectedId === null || selectedId === slice.categoryId ? 1 : 0.3
+                  selectedKey === null || selectedKey === slice.groupKey ? 1 : 0.3
                 }
                 stroke="none"
               />

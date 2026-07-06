@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { useStore } from '@/store'
-import { DEFAULT_RULES } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 
@@ -26,20 +26,20 @@ interface Props {
   transactions: Transaction[]
 }
 
-// ─── Category meta ────────────────────────────────────────────────────────────
-
-const CATEGORY_META = new Map(DEFAULT_RULES.map((r) => [r.id, { name: r.name, color: r.color }]))
-
-function getCatMeta(id: string) {
-  return CATEGORY_META.get(id) ?? { name: id || 'Uncategorized', color: '#8E8E93' }
-}
-
 // ─── Aggregation ─────────────────────────────────────────────────────────────
 
-function computeMerchants(transactions: Transaction[]): MerchantRow[] {
+function computeMerchants(
+  transactions: Transaction[],
+  categoryMetaById: Map<string, { name: string; color: string }>,
+): MerchantRow[] {
   const map = new Map<
     string,
-    { displayName: string; total: number; count: number; categories: Map<string, number> }
+    {
+      displayName: string
+      total: number
+      count: number
+      categories: Map<string, { count: number; color: string }>
+    }
   >()
 
   for (const tx of transactions) {
@@ -47,18 +47,28 @@ function computeMerchants(transactions: Transaction[]): MerchantRow[] {
     const key = tx.counterpartyName.trim().toLowerCase()
     if (!key) continue
 
+    const meta = categoryMetaById.get(tx.category) ?? {
+      name: tx.category || 'Uncategorized',
+      color: '#8E8E93',
+    }
+
     const entry = map.get(key)
     if (!entry) {
       map.set(key, {
         displayName: tx.counterpartyName.trim(),
         total: Math.abs(tx.amount),
         count: 1,
-        categories: new Map([[tx.category, 1]]),
+        categories: new Map([[meta.name, { count: 1, color: meta.color }]]),
       })
     } else {
       entry.total += Math.abs(tx.amount)
       entry.count += 1
-      entry.categories.set(tx.category, (entry.categories.get(tx.category) ?? 0) + 1)
+      const categoryEntry = entry.categories.get(meta.name)
+      if (categoryEntry) {
+        categoryEntry.count += 1
+      } else {
+        entry.categories.set(meta.name, { count: 1, color: meta.color })
+      }
     }
   }
 
@@ -67,15 +77,17 @@ function computeMerchants(transactions: Transaction[]): MerchantRow[] {
     .slice(0, 10)
     .map(([key, { displayName, total, count, categories }], i) => {
       // Modal category for this merchant
-      let topCatId = ''
+      let topCatName = ''
+      let topCatColor = '#8E8E93'
       let topCatCnt = 0
-      for (const [id, cnt] of categories) {
-        if (cnt > topCatCnt) {
-          topCatId = id
-          topCatCnt = cnt
+      for (const [name, cat] of categories) {
+        if (cat.count > topCatCnt) {
+          topCatName = name
+          topCatColor = cat.color
+          topCatCnt = cat.count
         }
       }
-      const meta = getCatMeta(topCatId)
+
       return {
         key,
         displayName,
@@ -83,8 +95,8 @@ function computeMerchants(transactions: Transaction[]): MerchantRow[] {
         total,
         count,
         avgAmount: count > 0 ? total / count : 0,
-        topCategoryName: meta.name,
-        topCategoryColor: meta.color,
+        topCategoryName: topCatName,
+        topCategoryColor: topCatColor,
       }
     })
 }
@@ -103,10 +115,30 @@ export function TopMerchantsTable({ transactions }: Props) {
   const [sortCol, setSortCol] = useState<SortCol>('rank')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const navigate = useNavigate()
+  const { rules } = useCategoryRules()
   const setFilter = useStore((s) => s.setFilter)
   const clearFilters = useStore((s) => s.clearFilters)
 
-  const merchants = useMemo(() => computeMerchants(transactions), [transactions])
+  const categoryMetaById = useMemo(() => {
+    const colorByName = new Map<string, string>()
+    for (const rule of rules) {
+      if (!colorByName.has(rule.name)) colorByName.set(rule.name, rule.color)
+    }
+
+    const byId = new Map<string, { name: string; color: string }>()
+    for (const rule of rules) {
+      byId.set(rule.id, {
+        name: rule.name,
+        color: colorByName.get(rule.name) ?? rule.color,
+      })
+    }
+    return byId
+  }, [rules])
+
+  const merchants = useMemo(
+    () => computeMerchants(transactions, categoryMetaById),
+    [transactions, categoryMetaById],
+  )
 
   const sorted = useMemo(() => {
     return [...merchants].sort((a, b) => {

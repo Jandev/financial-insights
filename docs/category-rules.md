@@ -8,9 +8,9 @@ Each transaction is categorized by `recategorize()` using this waterfall — fir
 
 1. **Spaarpotje IBAN match** — if the counterparty IBAN is a registered savings goal, category is `spaarpotje` (outbound) or `spaarpotje-withdrawal` (inbound). See [spaarpotjes.md](spaarpotjes.md).
 2. **Manual override** — category set by the user directly on a transaction row (persisted to `data/state/categories.json`).
-3. **Personal account IBAN match** — if the counterparty IBAN is a registered own account, category is `internal-transfer`.
-4. **Custom rules** — condition-based rules created in the Rule Editor (prepended, run in order).
-5. **Default rules** — built-in pattern-based rules (run in order, first match wins).
+3. **Custom rules** — condition-based rules created in the Rule Editor (prepended, run in order).
+4. **Default rules** — built-in pattern-based rules (run in order, first match wins).
+5. **Personal account IBAN fallback** — if still uncategorized and the counterparty IBAN is a registered own account, category is `internal-transfer`.
 6. **`uncategorized`** — fallback if nothing matches.
 
 ## Built-in default rules
@@ -29,8 +29,8 @@ Defined in `src/lib/categories.ts`. Matched by substring patterns, transaction c
 | `rent` | High-value recurring debits to housing counterparties |
 | `spaarpotje` | Outbound transfers to registered savings IBANs |
 | `spaarpotje-withdrawal` | Inbound transfers from registered savings IBANs |
-| `internal-transfer` | `tb` transaction codes (own-bank transfers) |
-| `own-account-transfer` | Transfers between registered personal accounts |
+| `internal-transfer` | Fallback when no rule matched and counterparty IBAN is a registered personal account |
+| `own-account-transfer` | Legacy category id kept for backward compatibility with existing overrides |
 | `uncategorized` | Catch-all fallback |
 
 ## Custom rules
