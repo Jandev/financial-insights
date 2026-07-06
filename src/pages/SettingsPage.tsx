@@ -610,13 +610,17 @@ function SourceProgressIndicator({ progress }: { progress: SourceProgress }) {
 
 type KnowledgeStatus = 'not_configured' | 'building' | 'ready' | 'error'
 
-function KnowledgeStatusBadge({ status, chunkCount, sourceCount, indexedPageCount }: {
+function KnowledgeStatusBadge({ status, phase, chunkCount, sourceCount, indexedPageCount }: {
   status: KnowledgeStatus
+  phase: string
   chunkCount: number
   sourceCount: number
   indexedPageCount: number
 }) {
-  if (status === 'building') {
+  const isActivePhase = phase !== 'idle' && phase !== 'starting' && phase !== 'done' && phase !== ''
+  const showBuilding = status === 'building' || isActivePhase
+
+  if (showBuilding) {
     return (
       <span className="flex items-center gap-1.5 text-[12px] text-text-secondary">
         <span className="inline-block h-2 w-2 rounded-full border-2 border-text-muted border-t-transparent animate-spin" />
@@ -1052,12 +1056,16 @@ export function SettingsPage() {
             <div className="flex flex-col gap-1 min-w-0 flex-1 mr-3">
               <KnowledgeStatusBadge
                 status={kbStatusData?.status ?? 'not_configured'}
+                phase={kbStatusData?.phase ?? ''}
                 chunkCount={kbStatusData?.chunkCount ?? 0}
                 sourceCount={kbStatusData?.sourceCount ?? 0}
                 indexedPageCount={kbStatusData?.indexedPageCount ?? 0}
               />
-              {kbStatusData?.status === 'building' && (() => {
+              {kbStatusData && (() => {
                 const phase = kbStatusData.phase
+                const active = kbStatusData.status === 'building' ||
+                  (phase !== 'idle' && phase !== 'starting' && phase !== 'done' && phase !== '')
+                if (!active) return null
                 // Parse "embedding 300/1012" → progress bar
                 const embedMatch = phase.match(/^embedding\s+(\d+)\/(\d+)/)
                 if (embedMatch) {

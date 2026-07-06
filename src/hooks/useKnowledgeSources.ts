@@ -100,6 +100,10 @@ function isActive(statusData: KnowledgeStatusData | null): boolean {
   if (!statusData) return false
   if (statusData.status === 'building') return true
   if (statusData.queueLength > 0) return true
+  // Also active if phase indicates ongoing work (catches startup path where status
+  // may not yet be 'building' but processing is underway)
+  const p = statusData.phase
+  if (p && p !== 'idle' && p !== 'done' && p !== '' && p !== 'starting') return true
   return Object.values(statusData.sourceProgress).some(
     (p) => p.status === 'queued' || p.status === 'building',
   )

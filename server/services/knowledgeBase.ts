@@ -746,6 +746,10 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
   }
   _embeddings = embeddings
 
+  // Mark as building immediately so status endpoint shows progress during startup init
+  _status = 'building'
+  _phase = 'starting'
+
   robotsCache.clear()
   _sourceProgress.clear()
 
