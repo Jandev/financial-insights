@@ -1,17 +1,19 @@
 /**
  * SettingsPage — /settings
  *
- * Four sections:
+ * Five sections:
  *   1. Spaarpotjes      — CRUD list for named savings accounts
  *   2. Personal Accounts — IBANs marked as internal (pocket money, joint accounts, etc.)
- *   3. Data             — Hard CSV refresh (prod: re-scans filesystem; dev: re-parses loaded files)
- *   4. Danger Zone      — Reset all settings (moved here from Sidebar)
+ *   3. AI Knowledge Base — URL sources for the RAG knowledge base (issue #53)
+ *   4. Data             — Hard CSV refresh (prod: re-scans filesystem; dev: re-parses loaded files)
+ *   5. Danger Zone      — Reset all settings (moved here from Sidebar)
  */
 
 import { useState } from 'react'
 import {
-  Plus, Pencil, Trash2, Check, X, RefreshCw, AlertTriangle,
-  PiggyBank, ArrowLeftRight, ToggleLeft, ToggleRight,
+  Plus, Trash2, Check, X, RefreshCw, AlertTriangle,
+  PiggyBank, ArrowLeftRight, ToggleLeft, ToggleRight, Brain,
+  Pencil, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/Card'
@@ -20,6 +22,8 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { useSavingsAccounts } from '@/hooks/useSavingsAccounts'
 import { usePersonalAccounts } from '@/hooks/usePersonalAccounts'
+import { useKnowledgeSources } from '@/hooks/useKnowledgeSources'
+import type { KnowledgeSource, CrawlPolicy } from '@/hooks/useKnowledgeSources'
 import { ResetStateDialog } from '@/components/layout/ResetStateDialog'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
 import type { SavingsAccount } from '@/types/savingsAccount'
@@ -287,11 +291,291 @@ function Section({ title, description, children }: {
   )
 }
 
+// ─── Knowledge source form (add / edit) ──────────────────────────────────────
+
+const DEFAULT_POLICY: Required<CrawlPolicy> = {
+  discovery: 'auto',
+  includePaths: [],
+  excludePaths: [],
+  maxPages: 100,
+  maxDepth: 2,
+  concurrency: 3,
+  respectRobots: true,
+  allowSubdomains: false,
+}
+
+interface KnowledgeSourceFormProps {
+  initial?: KnowledgeSource
+  onSave: (source: KnowledgeSource) => Promise<string | null>
+  onCancel: () => void
+}
+
+function KnowledgeSourceForm({ initial, onSave, onCancel }: KnowledgeSourceFormProps) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [url, setUrl] = useState(initial?.url ?? '')
+  const [mode, setMode] = useState<'single_page' | 'site'>(initial?.mode ?? 'single_page')
+  const [showAdvanced, setShowAdvanced] = useState(
+    // open advanced panel if editing a source that has policy set
+    !!(initial?.policy && Object.keys(initial.policy).length > 0),
+  )
+
+  const p = initial?.policy
+  const [discovery, setDiscovery] = useState<CrawlPolicy['discovery']>(p?.discovery ?? 'auto')
+  const [includePaths, setIncludePaths] = useState((p?.includePaths ?? []).join('\n'))
+  const [excludePaths, setExcludePaths] = useState((p?.excludePaths ?? []).join('\n'))
+  const [maxPages, setMaxPages] = useState(String(p?.maxPages ?? DEFAULT_POLICY.maxPages))
+  const [maxDepth, setMaxDepth] = useState(String(p?.maxDepth ?? DEFAULT_POLICY.maxDepth))
+  const [respectRobots, setRespectRobots] = useState(p?.respectRobots ?? true)
+  const [allowSubdomains, setAllowSubdomains] = useState(p?.allowSubdomains ?? false)
+
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+
+  function parsePaths(raw: string): string[] {
+    return raw.split('\n').map((l) => l.trim()).filter(Boolean)
+  }
+
+  function buildSource(): KnowledgeSource {
+    const src: KnowledgeSource = { name: name.trim(), url: url.trim(), mode }
+    if (mode === 'site') {
+      src.policy = {
+        discovery,
+        includePaths: parsePaths(includePaths),
+        excludePaths: parsePaths(excludePaths),
+        maxPages: parseInt(maxPages, 10) || DEFAULT_POLICY.maxPages,
+        maxDepth: parseInt(maxDepth, 10) || DEFAULT_POLICY.maxDepth,
+        concurrency: DEFAULT_POLICY.concurrency,
+        respectRobots,
+        allowSubdomains,
+      }
+    }
+    return src
+  }
+
+  function validate(): boolean {
+    const next: Record<string, string> = {}
+    if (!name.trim()) next.name = 'Name is required'
+    try {
+      const parsed = new URL(url.trim())
+      if (parsed.protocol !== 'https:') next.url = 'Only https:// URLs allowed'
+    } catch {
+      next.url = 'Invalid URL'
+    }
+    if (mode === 'site') {
+      const mp = parseInt(maxPages, 10)
+      if (isNaN(mp) || mp < 1) next.maxPages = 'Must be ≥ 1'
+      const md = parseInt(maxDepth, 10)
+      if (isNaN(md) || md < 1) next.maxDepth = 'Must be ≥ 1'
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validate()) return
+    setSaving(true)
+    const err = await onSave(buildSource())
+    setSaving(false)
+    if (err) setErrors({ url: err })
+  }
+
+  const inputCls = (field: string) => cn(
+    'w-full rounded-[6px] border px-2.5 py-1.5 text-[13px]',
+    'bg-bg-base text-text-primary placeholder-text-muted',
+    'focus:outline-none focus:ring-1 focus:ring-accent',
+    errors[field] ? 'border-expense' : 'border-border',
+  )
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[10px] border border-border bg-bg-elevated p-4 space-y-4">
+      {/* Name + URL */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-text-secondary">Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Nibud" className={inputCls('name')} />
+          {errors.name && <p className="text-[11px] text-expense">{errors.name}</p>}
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-text-secondary">URL</label>
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com/page" className={inputCls('url')} />
+          {errors.url && <p className="text-[11px] text-expense">{errors.url}</p>}
+        </div>
+      </div>
+
+      {/* Mode toggle */}
+      <div className="space-y-1">
+        <label className="text-[11px] font-medium text-text-secondary">Indexing mode</label>
+        <div className="flex gap-1.5">
+          {(['single_page', 'site'] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setMode(m)}
+              className={cn(
+                'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                mode === m ? 'bg-accent text-white' : 'bg-bg-base border border-border text-text-secondary hover:text-text-primary',
+              )}>
+              {m === 'single_page' ? 'Single page' : 'Site crawl'}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-text-muted">
+          {mode === 'single_page'
+            ? 'Indexes only the exact URL.'
+            : 'Discovers and indexes subpages via sitemap or link crawl.'}
+        </p>
+      </div>
+
+      {/* Advanced options — site mode only */}
+      {mode === 'site' && (
+        <div className="space-y-3">
+          <button type="button" onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1 text-[11px] font-medium text-text-secondary hover:text-text-primary transition-colors">
+            {showAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Advanced crawl options
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-3 rounded-[8px] border border-border bg-bg-base p-3">
+              {/* Discovery */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-text-secondary">Discovery</label>
+                <select value={discovery} onChange={(e) => setDiscovery(e.target.value as CrawlPolicy['discovery'])}
+                  className="w-full rounded-[6px] border border-border bg-bg-base px-2.5 py-1.5 text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent">
+                  <option value="auto">Auto (sitemap first, crawl fallback)</option>
+                  <option value="sitemap_only">Sitemap only</option>
+                  <option value="crawl_only">Link crawl only</option>
+                </select>
+              </div>
+
+              {/* Include / exclude paths */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-text-secondary">
+                    Include paths
+                    <span className="ml-1 text-text-muted font-normal">(one glob per line)</span>
+                  </label>
+                  <textarea value={includePaths} onChange={(e) => setIncludePaths(e.target.value)}
+                    rows={4} placeholder={'/onderwerpen/**\n/dossiers/**'}
+                    className="w-full rounded-[6px] border border-border bg-bg-elevated px-2.5 py-1.5 text-[12px] font-mono text-text-primary placeholder-text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
+                  <p className="text-[10px] text-text-muted">Leave empty to include all paths.</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-text-secondary">
+                    Exclude paths
+                    <span className="ml-1 text-text-muted font-normal">(one glob per line)</span>
+                  </label>
+                  <textarea value={excludePaths} onChange={(e) => setExcludePaths(e.target.value)}
+                    rows={4} placeholder={'/nieuws/**\n/pers/**'}
+                    className="w-full rounded-[6px] border border-border bg-bg-elevated px-2.5 py-1.5 text-[12px] font-mono text-text-primary placeholder-text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
+                  <p className="text-[10px] text-text-muted">Noise paths always excluded automatically.</p>
+                </div>
+              </div>
+
+              {/* Limits */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-text-secondary">Max pages</label>
+                  <input type="number" min={1} max={500} value={maxPages}
+                    onChange={(e) => setMaxPages(e.target.value)}
+                    className={inputCls('maxPages')} />
+                  {errors.maxPages && <p className="text-[11px] text-expense">{errors.maxPages}</p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-text-secondary">Max depth</label>
+                  <input type="number" min={1} max={5} value={maxDepth}
+                    onChange={(e) => setMaxDepth(e.target.value)}
+                    className={inputCls('maxDepth')} />
+                  {errors.maxDepth && <p className="text-[11px] text-expense">{errors.maxDepth}</p>}
+                </div>
+              </div>
+
+              {/* Toggles */}
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={respectRobots}
+                    onChange={(e) => setRespectRobots(e.target.checked)}
+                    className="rounded" />
+                  <span className="text-[12px] text-text-secondary">Respect robots.txt</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={allowSubdomains}
+                    onChange={(e) => setAllowSubdomains(e.target.checked)}
+                    className="rounded" />
+                  <span className="text-[12px] text-text-secondary">Allow subdomains</span>
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+          <X className="h-3.5 w-3.5" />
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" size="sm" disabled={saving}>
+          <Check className="h-3.5 w-3.5" />
+          {saving ? 'Saving…' : initial ? 'Save changes' : 'Add source'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ─── Knowledge status badge ───────────────────────────────────────────────────
+
+type KnowledgeStatus = 'not_configured' | 'building' | 'ready' | 'error'
+
+function KnowledgeStatusBadge({ status, chunkCount, sourceCount, indexedPageCount }: {
+  status: KnowledgeStatus
+  chunkCount: number
+  sourceCount: number
+  indexedPageCount: number
+}) {
+  if (status === 'building') {
+    return (
+      <span className="flex items-center gap-1.5 text-[12px] text-text-secondary">
+        <span className="inline-block h-2 w-2 rounded-full border-2 border-text-muted border-t-transparent animate-spin" />
+        Building…
+      </span>
+    )
+  }
+  if (status === 'ready') {
+    const pageInfo = indexedPageCount > sourceCount
+      ? ` ${'\u2022'} ${indexedPageCount} pages`
+      : ''
+    return (
+      <span className="flex items-center gap-1.5 text-[12px] text-income">
+        <span className="inline-block h-2 w-2 rounded-full bg-income" />
+        {`Ready \u2022 ${sourceCount} ${sourceCount === 1 ? 'source' : 'sources'}${pageInfo} \u2022 ${chunkCount} chunks`}
+      </span>
+    )
+  }
+  if (status === 'error') {
+    return (
+      <span className="flex items-center gap-1.5 text-[12px] text-expense">
+        <X className="h-3 w-3" />
+        Error
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
+      <span className="inline-block h-2 w-2 rounded-full border border-text-muted" />
+      Not configured
+    </span>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   const { accounts, addAccount, updateAccount, deleteAccount } = useSavingsAccounts()
   const { accounts: personalAccounts, addAccount: addPersonalAccount, updateAccount: updatePersonalAccount, deleteAccount: deletePersonalAccount } = usePersonalAccounts()
+  const { sources: knowledgeSources, statusData: kbStatusData, addSource, updateSource, removeSource } = useKnowledgeSources()
   const bumpCsvLoadKey = useStore((s) => s.bumpCsvLoadKey)
   const loadingState = useStore((s) => s.loadingState)
 
@@ -303,6 +587,11 @@ export function SettingsPage() {
   // Personal accounts add/delete state
   const [showPersonalAddForm, setShowPersonalAddForm] = useState(false)
   const [deletingPersonalIban, setDeletingPersonalIban] = useState<string | null>(null)
+
+  // Knowledge base add/edit/delete state
+  const [showKbAddForm, setShowKbAddForm] = useState(false)
+  const [editingKbUrl, setEditingKbUrl] = useState<string | null>(null)
+  const [deletingKbUrl, setDeletingKbUrl] = useState<string | null>(null)
 
   // Reset dialog
   const [showResetDialog, setShowResetDialog] = useState(false)
@@ -369,6 +658,40 @@ export function SettingsPage() {
     deletePersonalAccount(iban)
     setDeletingPersonalIban(null)
     toast.success(`Account removed`)
+  }
+
+  // ── Knowledge base handlers ───────────────────────────────────────────────
+
+  async function handleKbAdd(source: KnowledgeSource) {
+    const dup = knowledgeSources.find((s) => s.url === source.url)
+    if (dup) {
+      toast.error(`URL already added as "${dup.name}"`)
+      return 'URL already configured'
+    }
+    const err = await addSource(source)
+    if (err) { toast.error(err); return err }
+    setShowKbAddForm(false)
+    toast.success(`"${source.name}" added to knowledge base`)
+    return null
+  }
+
+  async function handleKbUpdate(originalUrl: string, source: KnowledgeSource) {
+    const err = await updateSource(originalUrl, source)
+    if (err) { toast.error(err); return err }
+    setEditingKbUrl(null)
+    toast.success(`"${source.name}" updated`)
+    return null
+  }
+
+  async function handleKbDelete(url: string) {
+    const src = knowledgeSources.find((s) => s.url === url)
+    try {
+      await removeSource(url)
+      setDeletingKbUrl(null)
+      toast.success(`"${src?.name ?? 'Source'}" removed`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove source')
+    }
   }
 
   // ── CSV refresh ──────────────────────────────────────────────────────────────
@@ -637,7 +960,146 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      {/* ── 3. Data ─────────────────────────────────────────────────────────── */}
+      {/* ── 3. AI Knowledge Base ─────────────────────────────────────────── */}
+      <Section
+        title="AI Knowledge Base"
+        description="URLs the advisor fetches and indexes as background knowledge when giving spending advice."
+      >
+        <Card padding="none">
+          {/* Status bar */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <KnowledgeStatusBadge
+              status={kbStatusData?.status ?? 'not_configured'}
+              chunkCount={kbStatusData?.chunkCount ?? 0}
+              sourceCount={kbStatusData?.sourceCount ?? 0}
+              indexedPageCount={kbStatusData?.indexedPageCount ?? 0}
+            />
+            {!showKbAddForm && !editingKbUrl && (
+              <Button variant="ghost" size="sm" onClick={() => setShowKbAddForm(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                Add source
+              </Button>
+            )}
+          </div>
+
+          {/* Failed sources warning */}
+          {kbStatusData && kbStatusData.failedSources.length > 0 && (
+            <div className="px-4 py-2.5 border-b border-border bg-expense-dim/40 space-y-1">
+              <p className="text-[11px] font-medium text-expense flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {kbStatusData.failedSources.length} source{kbStatusData.failedSources.length > 1 ? 's' : ''} failed to index
+              </p>
+              {kbStatusData.failedSources.map((f) => (
+                <p key={f.url} className="text-[11px] text-text-secondary pl-5 truncate">
+                  <span className="font-medium">{f.name}:</span> {f.reason}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Failed pages warning (site crawl) */}
+          {kbStatusData && kbStatusData.failedPages.length > 0 && (
+            <div className="px-4 py-2.5 border-b border-border bg-expense-dim/20 space-y-1">
+              <p className="text-[11px] font-medium text-text-secondary flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-text-muted" />
+                {kbStatusData.failedPages.length} page{kbStatusData.failedPages.length > 1 ? 's' : ''} failed during crawl
+              </p>
+              {kbStatusData.failedPages.slice(0, 5).map((f) => (
+                <p key={f.url} className="text-[10px] text-text-muted pl-5 truncate font-mono">
+                  {f.url}: {f.reason}
+                </p>
+              ))}
+              {kbStatusData.failedPages.length > 5 && (
+                <p className="text-[10px] text-text-muted pl-5">
+                  …and {kbStatusData.failedPages.length - 5} more
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Source list */}
+          {knowledgeSources.length > 0 && (
+            <ul className="divide-y divide-border">
+              {knowledgeSources.map((src) => (
+                <li key={src.url}>
+                  {editingKbUrl === src.url ? (
+                    <div className="px-4 py-3">
+                      <KnowledgeSourceForm
+                        initial={src}
+                        onSave={(updated) => handleKbUpdate(src.url, updated)}
+                        onCancel={() => setEditingKbUrl(null)}
+                      />
+                    </div>
+                  ) : deletingKbUrl === src.url ? (
+                    <div className="flex items-center gap-3 mx-4 my-2 rounded-[8px] border border-expense/20 bg-expense-dim px-3 py-2.5">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-expense" strokeWidth={2} />
+                      <p className="flex-1 text-[13px] text-text-primary">
+                        Remove <strong>"{src.name}"</strong>?
+                      </p>
+                      <Button variant="ghost" size="sm" onClick={() => setDeletingKbUrl(null)}>Cancel</Button>
+                      <Button variant="destructive" size="sm" onClick={() => void handleKbDelete(src.url)}>Remove</Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-medium text-text-primary truncate">{src.name}</p>
+                          {src.mode === 'site' && (
+                            <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                              Site crawl
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-text-muted truncate">{src.url}</p>
+                        {src.mode === 'site' && src.policy?.includePaths && src.policy.includePaths.length > 0 && (
+                          <p className="text-[10px] text-text-muted/70 truncate font-mono mt-0.5">
+                            include: {src.policy.includePaths.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => { setShowKbAddForm(false); setEditingKbUrl(src.url) }}
+                          title="Edit"
+                          className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-secondary">
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        </button>
+                        <button onClick={() => setDeletingKbUrl(src.url)} title="Remove"
+                          className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-expense-dim hover:text-expense">
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Empty state */}
+          {knowledgeSources.length === 0 && !showKbAddForm && (
+            <div className="flex flex-col items-center gap-2 py-10 text-text-muted">
+              <Brain className="h-8 w-8 opacity-40" strokeWidth={1.5} />
+              <p className="text-sm">No sources configured.</p>
+              <p className="text-xs text-text-muted/60 max-w-xs text-center">
+                Drop <code className="font-mono">.md</code> or <code className="font-mono">.txt</code> files into{' '}
+                <code className="font-mono">data/knowledge/</code> for local sources without a URL.
+              </p>
+            </div>
+          )}
+
+          {/* Add form */}
+          {showKbAddForm && (
+            <div className={cn('px-4 pb-4', knowledgeSources.length > 0 && 'border-t border-border pt-4')}>
+              <KnowledgeSourceForm
+                onSave={handleKbAdd}
+                onCancel={() => setShowKbAddForm(false)}
+              />
+            </div>
+          )}
+        </Card>
+      </Section>
+
+      {/* ── 4. Data ─────────────────────────────────────────────────────────── */}
       <Section
         title="Data"
         description="Manage CSV transaction data and categorization."
@@ -666,7 +1128,7 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      {/* ── 4. Danger Zone ──────────────────────────────────────────────────── */}
+      {/* ── 5. Danger Zone ──────────────────────────────────────────────────── */}
       <Section title="Danger Zone">
         <Card padding="md" className="border-expense/20">
           <div className="flex items-start justify-between gap-4">

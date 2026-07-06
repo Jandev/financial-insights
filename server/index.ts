@@ -47,6 +47,8 @@ import basicAuth from './middleware/basicAuth.js'
 import { llmRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
 import { loadFromDisk } from './services/transactionStore.js'
+import { initKnowledgeBase } from './services/knowledgeBase.js'
+import type { KnowledgeSource } from './services/knowledgeBase.js'
 import { createStateRouter } from './routes/state.js'
 import { createLLMRouter } from './routes/llm.js'
 import { createCategorizeRouter } from './routes/categorize.js'
@@ -63,6 +65,8 @@ const TRANSACTIONS_PATH =
 const STATE_PATH =
   process.env.STATE_PATH ?? path.join(__dirname, '..', 'data', 'state')
 const APP_TITLE = process.env.APP_TITLE ?? 'Financial Insights'
+const KNOWLEDGE_BASE_PATH =
+  process.env.KNOWLEDGE_BASE_PATH ?? path.join(__dirname, '..', 'data', 'knowledge')
 
 // ── State store ───────────────────────────────────────────────────────────────
 
@@ -164,7 +168,7 @@ app.get('/api/transactions/:filename', (req, res) => {
 
 // ── State routes (issue #22) ──────────────────────────────────────────────────
 
-app.use('/api/state', createStateRouter(stateStore))
+app.use('/api/state', createStateRouter(stateStore, KNOWLEDGE_BASE_PATH))
 
 // ── LLM routes (issues #17-#21) ───────────────────────────────────────────────
 // Rate limit applied to all /api/llm/* routes.
@@ -199,7 +203,17 @@ app.use(errorHandler)
 
 const server = createServer(app)
 
-void ensureStateDirs().then(() => loadFromDisk(stateStore))
+void ensureStateDirs().then(async () => {
+  await loadFromDisk(stateStore)
+  // Init knowledge base async — non-blocking, server already listening
+  const savedKnowledge = await stateStore
+    .read<{ sources: KnowledgeSource[] }>('knowledge')
+    .catch(() => null)
+  void initKnowledgeBase({
+    sources: savedKnowledge?.sources ?? [],
+    localPath: KNOWLEDGE_BASE_PATH,
+  })
+})
 
 server.listen(PORT, () => {
   console.log(`[server] financial-insights running on port ${PORT} (${NODE_ENV})`)
