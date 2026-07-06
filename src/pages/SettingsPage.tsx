@@ -540,6 +540,24 @@ function SourceProgressIndicator({ progress }: { progress: SourceProgress }) {
   }
 
   if (status === 'building') {
+    const embedMatch = phase.match(/^embedding\s+(\d+)\/(\d+)/)
+    if (embedMatch) {
+      const done = parseInt(embedMatch[1], 10)
+      const total = parseInt(embedMatch[2], 10)
+      const pct = Math.round((done / total) * 100)
+      return (
+        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+          <span className="flex items-center gap-1 text-[11px] text-text-secondary">
+            <span className="inline-block h-2 w-2 rounded-full border-2 border-text-muted border-t-transparent animate-spin shrink-0" />
+            Embedding {done}/{total} chunks ({pct}%)
+          </span>
+          <div className="h-1 rounded-full bg-bg-base overflow-hidden w-full">
+            <div className="h-full bg-accent transition-all duration-300 rounded-full" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )
+    }
+
     const phaseTrunc = phase.length > 30 ? phase.slice(0, 30) + '…' : phase
     const hasProgress = eligible > 0
     const pct = hasProgress ? Math.round((processed / eligible) * 100) : null
@@ -1031,22 +1049,45 @@ export function SettingsPage() {
         <Card padding="none">
           {/* Status bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-1 min-w-0 flex-1 mr-3">
               <KnowledgeStatusBadge
                 status={kbStatusData?.status ?? 'not_configured'}
                 chunkCount={kbStatusData?.chunkCount ?? 0}
                 sourceCount={kbStatusData?.sourceCount ?? 0}
                 indexedPageCount={kbStatusData?.indexedPageCount ?? 0}
               />
-              {kbStatusData?.status === 'building' && kbStatusData.currentSource && (
-                <span className="text-[11px] text-text-muted pl-3.5">
-                  {kbStatusData.phase !== 'idle' && kbStatusData.phase !== 'starting'
-                    ? kbStatusData.phase
-                    : `Processing ${kbStatusData.currentSource}…`}
-                </span>
-              )}
+              {kbStatusData?.status === 'building' && (() => {
+                const phase = kbStatusData.phase
+                // Parse "embedding 300/1012" → progress bar
+                const embedMatch = phase.match(/^embedding\s+(\d+)\/(\d+)/)
+                if (embedMatch) {
+                  const done = parseInt(embedMatch[1], 10)
+                  const total = parseInt(embedMatch[2], 10)
+                  const pct = Math.round((done / total) * 100)
+                  return (
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] text-text-muted">
+                        Embedding {done}/{total} chunks ({pct}%)
+                      </span>
+                      <div className="h-1 rounded-full bg-bg-base overflow-hidden">
+                        <div
+                          className="h-full bg-accent transition-all duration-300 rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                }
+                // "fetching", "discovering", "processing X", "starting", etc.
+                const label = kbStatusData.currentSource
+                  ? `${phase !== 'idle' && phase !== 'starting' ? phase : 'Processing'} — ${kbStatusData.currentSource}`
+                  : phase !== 'idle' && phase !== 'starting' ? phase : 'Building…'
+                return (
+                  <span className="text-[11px] text-text-muted">{label}</span>
+                )
+              })()}
               {kbStatusData && kbStatusData.queueLength > 0 && kbStatusData.status !== 'building' && (
-                <span className="text-[11px] text-text-muted pl-3.5">
+                <span className="text-[11px] text-text-muted">
                   {kbStatusData.queueLength} source{kbStatusData.queueLength > 1 ? 's' : ''} queued
                 </span>
               )}

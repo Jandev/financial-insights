@@ -694,8 +694,9 @@ async function runSourceResync(source: KnowledgeSource, _localPath: string): Pro
       const batch = result.texts.slice(i, i + BATCH)
       const vecs = await embeddings.embedDocuments(batch)
       newVectors.push(...vecs)
-      setSourceProgress(source.url, { phase: 'embedding', chunks: i + batch.length })
-      console.log(`[knowledgeBase] "${source.name}": embedded ${Math.min(i + BATCH, result.texts.length)}/${result.texts.length} chunks`)
+      const embDone = Math.min(i + BATCH, result.texts.length)
+      setSourceProgress(source.url, { phase: `embedding ${embDone}/${result.texts.length}`, chunks: embDone })
+      console.log(`[knowledgeBase] "${source.name}": embedded ${embDone}/${result.texts.length} chunks`)
     }
 
     // Atomic swap: remove old, insert new
