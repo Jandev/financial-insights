@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { loadAllTransactions } from '@/lib/csvLoader'
+import { readRulesFromStorage, readOverridesFromStorage } from '@/lib/categories'
+import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
+import { readSavingsAccountsFromStorage } from '@/hooks/useSavingsAccounts'
 import { useStore } from '@/store'
 import type { LoadingState } from '@/types/loader'
 
@@ -38,6 +41,12 @@ export function useTransactionLoader() {
     })
 
     loadAllTransactions(
+      {
+        rules: readRulesFromStorage(),
+        overrides: readOverridesFromStorage(),
+        personalAccounts: readPersonalAccountsFromStorage(),
+        savingsAccounts: readSavingsAccountsFromStorage(),
+      },
       (progress: LoadingState) => setLoadingState(progress),
       (entry) => logFile(entry),
     )

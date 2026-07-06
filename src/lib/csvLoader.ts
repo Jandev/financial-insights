@@ -2,16 +2,24 @@ import { parseFile } from '@/lib/parsers/index'
 import {
   categorizeWithPersonalFallback,
   mergeRules,
-  readRulesFromStorage,
-  readOverridesFromStorage,
   INTERNAL_TRANSFER_RULE_IDS,
+  type CategoryOverrides,
+  type CategoryRule,
 } from '@/lib/categories'
-import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
 import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
+import type { PersonalAccount } from '@/types/personalAccount'
+import type { SavingsAccount } from '@/types/savingsAccount'
 
 type ProgressCallback = (state: LoadingState) => void
 type FileLoadedCallback = (entry: LoadedFileEntry) => void
+
+export interface LoaderInputs {
+  rules: CategoryRule[]
+  overrides: CategoryOverrides
+  personalAccounts: PersonalAccount[]
+  savingsAccounts: SavingsAccount[]
+}
 
 /**
  * Load all CSV transaction files and parse them into `Transaction[]`.
@@ -26,23 +34,30 @@ type FileLoadedCallback = (entry: LoadedFileEntry) => void
  *
  * Both strategies produce identical `Transaction[]` output via the adapter registry.
  *
+ * @param inputs       - Preloaded categorization inputs (rules, overrides,
+ *                       account lists) supplied by caller.
  * @param onProgress   - Called after each file is processed; useful for updating a
  *                       loading screen with live progress.
  * @param onFileLoaded - Called once per successfully parsed file with metadata
  *                       (filename, row count, bank id, timestamp).
  */
 export async function loadAllTransactions(
+  inputs: LoaderInputs,
   onProgress?: ProgressCallback,
   onFileLoaded?: FileLoadedCallback,
 ): Promise<Transaction[]> {
   return import.meta.env.DEV
-    ? loadFromVite(onProgress, onFileLoaded)
-    : loadFromApi(onProgress, onFileLoaded)
+    ? loadFromVite(inputs, onProgress, onFileLoaded)
+    : loadFromApi(inputs, onProgress, onFileLoaded)
 }
 
 // ─── Dev strategy: Vite dev server ──────────────────────────────────────────
 
-async function loadFromVite(onProgress?: ProgressCallback, onFileLoaded?: FileLoadedCallback): Promise<Transaction[]> {
+async function loadFromVite(
+  inputs: LoaderInputs,
+  onProgress?: ProgressCallback,
+  onFileLoaded?: FileLoadedCallback,
+): Promise<Transaction[]> {
   // import.meta.glob resolves the matched paths at build time.
   // We only need the keys (import paths); no module body is imported,
   // so `eager: false` (default) is used and we discard the loader functions.
@@ -57,6 +72,7 @@ async function loadFromVite(onProgress?: ProgressCallback, onFileLoaded?: FileLo
       filename: importPath.split('/').pop() ?? importPath,
       url: importPath,
     })),
+    inputs,
     onProgress,
     onFileLoaded,
   )
@@ -64,7 +80,11 @@ async function loadFromVite(onProgress?: ProgressCallback, onFileLoaded?: FileLo
 
 // ─── Prod strategy: Express API ──────────────────────────────────────────────
 
-async function loadFromApi(onProgress?: ProgressCallback, onFileLoaded?: FileLoadedCallback): Promise<Transaction[]> {
+async function loadFromApi(
+  inputs: LoaderInputs,
+  onProgress?: ProgressCallback,
+  onFileLoaded?: FileLoadedCallback,
+): Promise<Transaction[]> {
   const filenames: string[] = await fetch('/api/transactions').then((r) => {
     if (!r.ok) throw new Error(`/api/transactions responded ${r.status}`)
     return r.json() as Promise<string[]>
@@ -75,6 +95,7 @@ async function loadFromApi(onProgress?: ProgressCallback, onFileLoaded?: FileLoa
       filename,
       url: `/api/transactions/${encodeURIComponent(filename)}`,
     })),
+    inputs,
     onProgress,
     onFileLoaded,
   )
@@ -89,6 +110,7 @@ interface FileEntry {
 
 async function processFiles(
   files: FileEntry[],
+  inputs: LoaderInputs,
   onProgress?: ProgressCallback,
   onFileLoaded?: FileLoadedCallback,
 ): Promise<Transaction[]> {
@@ -151,12 +173,12 @@ async function processFiles(
   // to the full transaction set (relevant for future cross-transaction rules).
 
   // ── Step 1: Build categorization inputs ──────────────────────────────────
-  const customRules = readRulesFromStorage()
+  const customRules = inputs.rules
   // Exclude the tb-based internal-transfer fallback rules — transfers are only
   // recognised when the counterparty IBAN is explicitly added to Personal Accounts.
   const rules = mergeRules(customRules).filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
-  const overrides = readOverridesFromStorage()
-  const personalAccounts = readPersonalAccountsFromStorage()
+  const overrides = inputs.overrides
+  const personalAccounts = inputs.personalAccounts
 
   return all.map((tx) => {
     // Manual category override wins over all auto-classification
