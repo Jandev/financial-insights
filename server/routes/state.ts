@@ -288,6 +288,13 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
 
     const sources = (body as { sources: unknown[] }).sources
 
+    // Hard server-side caps — UI limits alone are not sufficient
+    const MAX_SOURCES = 20
+    if (sources.length > MAX_SOURCES) {
+      res.status(400).json({ error: `Maximum ${MAX_SOURCES} knowledge sources allowed` })
+      return
+    }
+
     // Validate each source
     for (const src of sources) {
       if (
@@ -342,11 +349,17 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
             }
           }
         }
+        // Hard caps to prevent DoS / runaway cost
+        const POLICY_CAPS: Record<string, number> = { maxPages: 500, maxDepth: 5, concurrency: 5 }
         for (const field of ['maxPages', 'maxDepth', 'concurrency'] as const) {
           if (p[field] !== undefined) {
             const n = p[field] as unknown
             if (typeof n !== 'number' || !Number.isInteger(n) || (n as number) < 1) {
               res.status(400).json({ error: `policy.${field} must be a positive integer` })
+              return
+            }
+            if ((n as number) > POLICY_CAPS[field]) {
+              res.status(400).json({ error: `policy.${field} must be ≤ ${POLICY_CAPS[field]}` })
               return
             }
           }

@@ -221,7 +221,7 @@ function buildSystemPrompt(): string {
   const latest = months.length > 0 ? months[months.length - 1] : null
 
   const kbStatus = getKnowledgeStatus()
-  const kbNote = kbStatus.status === 'ready' || kbStatus.status === 'not_configured' && kbStatus.chunkCount > 0
+  const kbNote = kbStatus.status === 'ready' || (kbStatus.status === 'not_configured' && kbStatus.chunkCount > 0)
     ? `\nKnowledge base: ${kbStatus.chunkCount} chunks indexed from ${kbStatus.sourceCount} source(s). ` +
       `Use searchFinancialKnowledge when the user asks for financial norms, benchmarks, budget guidelines, ` +
       `tax thresholds, or general advice not derivable from transaction data.`

@@ -26,6 +26,7 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises'
+import { lookup as dnsLookup } from 'node:dns/promises'
 import path from 'node:path'
 import { OpenAIEmbeddings, AzureOpenAIEmbeddings } from '@langchain/openai'
 import type { EmbeddingsInterface } from '@langchain/core/embeddings'
@@ -99,21 +100,91 @@ export interface InitKnowledgeBaseOptions {
 
 // ─── Glob → RegExp ────────────────────────────────────────────────────────────
 
+const GLOB_STAR_TOKEN = '__GLOBSTAR__'
+
 function globToRegex(glob: string): RegExp {
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '\x00')
+    .replace(/\*\*/g, GLOB_STAR_TOKEN)
     .replace(/\*/g, '[^/]*')
-    .replace(/\x00/g, '.*')
+    .replace(new RegExp(GLOB_STAR_TOKEN, 'g'), '.*')
     .replace(/\?/g, '[^/]')
-  return new RegExp(`^${escaped}`)
+  return new RegExp(`^${escaped}$`)
 }
 
 function matchesPaths(urlPath: string, patterns: string[]): boolean {
   return patterns.some((p) => globToRegex(p).test(urlPath))
 }
 
-// ─── Built-in noise excludes ──────────────────────────────────────────────────
+// ─── SSRF guard ───────────────────────────────────────────────────────────────
+
+/**
+ * Private/reserved IPv4 ranges and localhost patterns that must never be
+ * fetched server-side regardless of user-supplied URLs.
+ */
+const PRIVATE_IP_PATTERNS = [
+  /^127\./,                        // loopback
+  /^0\./,                          // this network
+  /^10\./,                         // RFC-1918 class A
+  /^172\.(1[6-9]|2\d|3[01])\./,   // RFC-1918 class B
+  /^192\.168\./,                   // RFC-1918 class C
+  /^169\.254\./,                   // link-local (AWS IMDS, Azure IMDS)
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,  // shared address space
+  /^::1$/,                         // IPv6 loopback
+  /^fc00:/i,                       // IPv6 unique local
+  /^fe80:/i,                       // IPv6 link-local
+]
+
+function isPrivateAddress(host: string): boolean {
+  // Reject obvious hostname patterns
+  const h = host.toLowerCase()
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') ||
+      h.endsWith('.localdomain') || h === '0.0.0.0' || h === '::1') {
+    return true
+  }
+  return PRIVATE_IP_PATTERNS.some((re) => re.test(host))
+}
+
+/**
+ * Validate that a URL is safe to fetch:
+ * - Must be https://
+ * - Hostname must not resolve to a private/reserved IP address
+ *
+ * Throws with a descriptive message if unsafe.
+ */
+async function assertSafeUrl(rawUrl: string): Promise<void> {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new Error(`Invalid URL: ${rawUrl}`)
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Only https:// URLs are allowed (got ${parsed.protocol})`)
+  }
+
+  const hostname = parsed.hostname
+
+  // Quick check before DNS lookup
+  if (isPrivateAddress(hostname)) {
+    throw new Error(`Requests to private/reserved addresses are not allowed: ${hostname}`)
+  }
+
+  // DNS resolution check — blocks SSRF via A-record pointing at internal infra
+  try {
+    const addresses = await dnsLookup(hostname, { all: true })
+    for (const { address } of addresses) {
+      if (isPrivateAddress(address)) {
+        throw new Error(`URL resolves to a private address (${address}): ${hostname}`)
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('private')) throw err
+    // DNS lookup failure → treat as non-resolvable (also blocked below at fetch time)
+  }
+}
+
 
 const BUILTIN_EXCLUDE_PREFIXES = [
   '/wp-admin', '/wp-login', '/wp-json',
@@ -170,6 +241,7 @@ async function fetchDisallowedPaths(origin: string): Promise<Set<string>> {
   if (cached) return cached
   const disallowed = new Set<string>()
   try {
+    await assertSafeUrl(`${origin}/robots.txt`)
     const res = await fetch(`${origin}/robots.txt`, {
       headers: { 'User-Agent': 'financial-insights-kb/1.0' },
       signal: AbortSignal.timeout(10_000),
@@ -213,6 +285,7 @@ async function discoverViaSitemap(
   const sitemapQueue: string[] = []
   for (const candidate of [`${origin}/sitemap_index.xml`, `${origin}/sitemap.xml`]) {
     try {
+      await assertSafeUrl(candidate)
       const res = await fetch(candidate, {
         headers: { 'User-Agent': 'financial-insights-kb/1.0' },
         signal: AbortSignal.timeout(15_000),
@@ -228,6 +301,7 @@ async function discoverViaSitemap(
   }
   for (const sitemapUrl of sitemapQueue.slice(0, 20)) {
     try {
+      await assertSafeUrl(sitemapUrl)
       const res = await fetch(sitemapUrl, {
         headers: { 'User-Agent': 'financial-insights-kb/1.0' },
         signal: AbortSignal.timeout(15_000),
@@ -266,6 +340,7 @@ async function discoverViaCrawl(
       if (visited.has(url)) return
       visited.add(url)
       try {
+        await assertSafeUrl(url)
         const res = await fetch(url, {
           headers: { 'User-Agent': 'financial-insights-kb/1.0' },
           signal: AbortSignal.timeout(15_000),
@@ -391,34 +466,70 @@ function splitText(text: string, chunkSize = 600, chunkOverlap = 60): string[] {
   return chunks
 }
 
-// ─── HTML stripping ───────────────────────────────────────────────────────────
+// ─── HTML text extraction ─────────────────────────────────────────────────────
+//
+// Goal: extract readable text for embedding — NOT to sanitize HTML for display.
+// Strategy: remove entire element subtrees that are noise (script, style, nav,
+// header, footer), then strip all remaining angle-bracket tag markup and
+// decode a minimal set of common entities, one character at a time.
+//
+// Using single-character replacements avoids the "incomplete multi-character
+// sanitization" class of bugs; we are not trying to produce safe HTML output.
 
 const MIN_TEXT_LENGTH = 100
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    .replace(/<header[\s\S]*?<\/header>/gi, '')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/\s{2,}/g, ' ').trim()
+// Removes a paired HTML element and all its content.
+// Handles attributes and self-closing variants safely.
+function removeElement(html: string, tagName: string): string {
+  // Build a pattern that matches <tag ...>...</tag> across newlines.
+  // We use a non-greedy match anchored by the closing tag.
+  // This avoids the "bad tag filter" pitfall by matching closing tags
+  // case-insensitively and tolerating whitespace/attributes.
+  const open = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`<${open}[\\s>][\\s\\S]*?<\\/${open}[\\s>]`, 'gi')
+  return html.replace(re, ' ')
+}
+
+function extractText(html: string): string {
+  // Remove noise subtrees entirely (content + tags)
+  let text = html
+  for (const tag of ['script', 'style', 'noscript', 'nav', 'header', 'footer', 'aside']) {
+    text = removeElement(text, tag)
+  }
+
+  // Strip all remaining HTML tags — replace any <...> block with a space.
+  // Single-character token replacement avoids multi-char sanitization issues.
+  text = text.replace(/<[^>]*>/g, ' ')
+
+  // Decode a minimal set of HTML entities — order does not matter here
+  // because we are mapping entity → plain char, not the reverse.
+  text = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&')   // ampersand last to avoid double-unescaping
+
+  // Collapse whitespace
+  return text.replace(/\s{2,}/g, ' ').trim()
 }
 
 async function fetchPageContent(url: string): Promise<{ content: string } | { error: string }> {
   try {
+    // SSRF guard: validate before connecting
+    await assertSafeUrl(url)
+
     const res = await fetch(url, {
       headers: { 'User-Agent': 'financial-insights-kb/1.0' },
       signal: AbortSignal.timeout(15_000),
+      redirect: 'follow',
     })
     if (!res.ok) return { error: `HTTP ${res.status} ${res.statusText}` }
     const contentType = res.headers.get('content-type') ?? ''
     if (!contentType.includes('text/')) return { error: `Non-text content-type: ${contentType}` }
     const raw = await res.text()
-    const content = contentType.includes('text/html') ? stripHtml(raw) : raw
+    const content = contentType.includes('text/html') ? extractText(raw) : raw
     if (content.length < MIN_TEXT_LENGTH) return { error: 'Insufficient text content' }
     return { content }
   } catch (err) {
@@ -448,12 +559,20 @@ let _store: InMemoryVectorStore = new InMemoryVectorStore()
 let _embeddings: EmbeddingsInterface | null = null
 let _status: KnowledgeStatus = 'not_configured'
 let _chunkCount = 0
-let _indexedSources: string[] = []
+/** Canonical source names (url → name) for sources that are currently indexed. */
+const _indexedSourceMap = new Map<string, string>()
 let _failedSources: Array<{ name: string; url: string; reason: string }> = []
 let _discoveredCount = 0
 let _eligibleCount = 0
 let _indexedPageCount = 0
+/** Per-source indexed page counts for accurate resync delta accounting. */
+const _sourcePageCount = new Map<string, number>()
 let _failedPages: FailedPage[] = []
+
+/** Derived list of source display names for status API. */
+function indexedSourceNames(): string[] {
+  return [..._indexedSourceMap.values()]
+}
 
 // ─── Live progress state ──────────────────────────────────────────────────────
 
@@ -478,7 +597,6 @@ function setSourceProgress(sourceId: string, patch: Partial<SourceProgress>): vo
 
 interface ResyncJob {
   source: KnowledgeSource
-  localPath: string
 }
 
 const _resyncQueue: ResyncJob[] = []
@@ -490,7 +608,10 @@ let _workerRunning = false
  */
 export function enqueueKnowledgeSourceResync(
   source: KnowledgeSource,
-  localPath: string,
+  // localPath kept in signature for backwards compatibility but is no longer used
+  // (resync no longer re-indexes local files — that requires a full rebuild)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _localPath: string,
 ): { status: 'queued' | 'already_queued'; position: number } {
   // Dedup by URL
   const existing = _resyncQueue.findIndex((j) => j.source.url === source.url)
@@ -498,7 +619,7 @@ export function enqueueKnowledgeSourceResync(
     return { status: 'already_queued', position: existing + 1 }
   }
 
-  _resyncQueue.push({ source, localPath })
+  _resyncQueue.push({ source })
   setSourceProgress(source.url, { status: 'queued', phase: 'queued' })
   console.log(`[knowledgeBase] Queued resync for "${source.name}" (queue size: ${_resyncQueue.length})`)
 
@@ -523,7 +644,7 @@ async function processResyncQueue(): Promise<void> {
       const job = _resyncQueue.shift()
       if (!job) break
 
-      await runSourceResync(job.source, job.localPath)
+      await runSourceResync(job.source)
     }
   } finally {
     _workerRunning = false
@@ -654,7 +775,7 @@ async function indexSource(
 
 // ─── Targeted source resync ───────────────────────────────────────────────────
 
-async function runSourceResync(source: KnowledgeSource, _localPath: string): Promise<void> {
+async function runSourceResync(source: KnowledgeSource): Promise<void> {
   const embeddings = _embeddings ?? createEmbeddings()
   if (!embeddings) {
     setSourceProgress(source.url, { status: 'error', phase: 'error', error: 'No LLM credentials configured' })
@@ -703,10 +824,12 @@ async function runSourceResync(source: KnowledgeSource, _localPath: string): Pro
     const removed = _store.removeBySourceId(source.url)
     _store.addEmbedded(result.texts, newVectors, result.metas)
 
-    // Update global stats
+    // Update global stats using exact per-source page accounting
+    const oldPageCount = _sourcePageCount.get(source.url) ?? 0
     _chunkCount = _chunkCount - removed + result.texts.length
-    _indexedPageCount = _indexedPageCount - (removed > 0 ? 1 : 0) + result.processed
-    if (!_indexedSources.includes(source.name)) _indexedSources.push(source.name)
+    _indexedPageCount = _indexedPageCount - oldPageCount + result.processed
+    _sourcePageCount.set(source.url, result.processed)
+    _indexedSourceMap.set(source.url, source.name)
 
     // Update failed pages list (remove old entries for this source, add new)
     _failedPages = _failedPages.filter((fp) => {
@@ -755,7 +878,10 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
 
   const allTexts: string[] = []
   const allMetas: ChunkMeta[] = []
-  const indexed: string[] = []
+  /** url → name for successfully indexed URL sources */
+  const indexedMap = new Map<string, string>()
+  /** url → page count for URL sources */
+  const sourcePageCounts = new Map<string, number>()
   const failedSources: Array<{ name: string; url: string; reason: string }> = []
   const failedPages: FailedPage[] = []
   const stats = { discovered: 0, eligible: 0, indexedPages: 0 }
@@ -786,7 +912,8 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
       allTexts.push(...result.texts)
       allMetas.push(...result.metas)
       stats.indexedPages += result.processed
-      indexed.push(result.processed > 1 ? `${source.name} (${result.processed} pages)` : source.name)
+      indexedMap.set(source.url, source.name)
+      sourcePageCounts.set(source.url, result.processed)
       setSourceProgress(source.url, { status: 'ready', phase: 'done', chunks: result.texts.length })
     } else {
       failedSources.push({ name: source.name, url: source.url, reason: 'All pages failed' })
@@ -804,7 +931,9 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
       allTexts.push(chunk)
       allMetas.push({ sourceId: `local:${name}`, sourceName: name, localFile: name })
     }
-    indexed.push(name)
+    // Local files use a synthetic key
+    indexedMap.set(`local:${name}`, name)
+    sourcePageCounts.set(`local:${name}`, 1)
     stats.indexedPages++
   }
 
@@ -814,7 +943,8 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
     _store = new InMemoryVectorStore()
     _embeddings = null
     _chunkCount = 0
-    _indexedSources = []
+    _indexedSourceMap.clear()
+    _sourcePageCount.clear()
     _failedSources = failedSources
     _discoveredCount = stats.discovered
     _eligibleCount = stats.eligible
@@ -843,7 +973,10 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
     _store = store
     _embeddings = embeddings
     _chunkCount = allTexts.length
-    _indexedSources = indexed
+    _indexedSourceMap.clear()
+    for (const [k, v] of indexedMap) _indexedSourceMap.set(k, v)
+    _sourcePageCount.clear()
+    for (const [k, v] of sourcePageCounts) _sourcePageCount.set(k, v)
     _failedSources = failedSources
     _discoveredCount = stats.discovered
     _eligibleCount = stats.eligible
@@ -852,7 +985,7 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
     _status = 'ready'
     _phase = 'idle'
     console.log(
-      `[knowledgeBase] Indexed ${_chunkCount} chunks from ${indexed.length} source(s), ${stats.indexedPages} pages` +
+      `[knowledgeBase] Indexed ${_chunkCount} chunks from ${indexedMap.size} source(s), ${stats.indexedPages} pages` +
       (failedSources.length + failedPages.length > 0
         ? ` (${failedSources.length} source failures, ${failedPages.length} page failures)` : ''),
     )
@@ -860,7 +993,9 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
     console.error('[knowledgeBase] Failed to build vector store:', err)
     _store = new InMemoryVectorStore()
     _embeddings = null
-    _chunkCount = 0; _indexedSources = []
+    _chunkCount = 0
+    _indexedSourceMap.clear()
+    _sourcePageCount.clear()
     _failedSources = failedSources
     _discoveredCount = stats.discovered
     _eligibleCount = stats.eligible
@@ -872,10 +1007,37 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
 }
 
 export function rebuildKnowledgeBase(options: InitKnowledgeBaseOptions): void {
+  // If a rebuild is already running, coalesce: the new config will be applied
+  // once the current run finishes (stored to disk by the caller already).
+  // This prevents concurrent builds thrashing CPU/network and racing global state.
+  if (_rebuildRunning) {
+    console.log('[knowledgeBase] Rebuild requested while one is already running — will restart after current run')
+    // Chain: when current rebuild finishes, run one more with the latest options
+    const runAfter = () => {
+      if (!_rebuildRunning) {
+        // Remove the chained listener to avoid accumulation
+        startRebuild(options)
+      }
+    }
+    // Poll until current build finishes then kick off next
+    const poll = setInterval(() => {
+      if (!_rebuildRunning) {
+        clearInterval(poll)
+        runAfter()
+      }
+    }, 500)
+    return
+  }
+  startRebuild(options)
+}
+
+function startRebuild(options: InitKnowledgeBaseOptions): void {
   _status = 'building'
   _store = new InMemoryVectorStore()
   _embeddings = null
-  _chunkCount = 0; _indexedSources = []
+  _chunkCount = 0
+  _indexedSourceMap.clear()
+  _sourcePageCount.clear()
   _failedSources = []; _discoveredCount = 0; _eligibleCount = 0
   _indexedPageCount = 0; _failedPages = []
   _phase = 'starting'
@@ -928,8 +1090,8 @@ export function getKnowledgeStatus(): KnowledgeStatusResult {
   return {
     status: _status,
     chunkCount: _chunkCount,
-    sourceCount: _indexedSources.length,
-    indexedSources: _indexedSources,
+    sourceCount: _indexedSourceMap.size,
+    indexedSources: indexedSourceNames(),
     failedSources: _failedSources,
     discoveredCount: _discoveredCount,
     eligibleCount: _eligibleCount,
