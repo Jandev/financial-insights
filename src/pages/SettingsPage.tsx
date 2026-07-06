@@ -13,7 +13,7 @@ import { useState } from 'react'
 import {
   Plus, Trash2, Check, X, RefreshCw, AlertTriangle,
   PiggyBank, ArrowLeftRight, ToggleLeft, ToggleRight, Brain,
-  Pencil, ChevronDown, ChevronUp,
+  Pencil, ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/Card'
@@ -23,7 +23,7 @@ import { useStore } from '@/store'
 import { useSavingsAccounts } from '@/hooks/useSavingsAccounts'
 import { usePersonalAccounts } from '@/hooks/usePersonalAccounts'
 import { useKnowledgeSources } from '@/hooks/useKnowledgeSources'
-import type { KnowledgeSource, CrawlPolicy } from '@/hooks/useKnowledgeSources'
+import type { KnowledgeSource, CrawlPolicy, SourceProgress } from '@/hooks/useKnowledgeSources'
 import { ResetStateDialog } from '@/components/layout/ResetStateDialog'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
 import type { SavingsAccount } from '@/types/savingsAccount'
@@ -525,7 +525,70 @@ function KnowledgeSourceForm({ initial, onSave, onCancel }: KnowledgeSourceFormP
   )
 }
 
-// ─── Knowledge status badge ───────────────────────────────────────────────────
+// ─── Per-source progress indicator ───────────────────────────────────────────
+
+function SourceProgressIndicator({ progress }: { progress: SourceProgress }) {
+  const { status, phase, processed, eligible, chunks } = progress
+
+  if (status === 'queued') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-text-muted">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-muted/50" />
+        Queued
+      </span>
+    )
+  }
+
+  if (status === 'building') {
+    const phaseTrunc = phase.length > 30 ? phase.slice(0, 30) + '…' : phase
+    const hasProgress = eligible > 0
+    const pct = hasProgress ? Math.round((processed / eligible) * 100) : null
+
+    return (
+      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+        <span className="flex items-center gap-1 text-[11px] text-text-secondary">
+          <span className="inline-block h-2 w-2 rounded-full border-2 border-text-muted border-t-transparent animate-spin shrink-0" />
+          {phaseTrunc}
+          {hasProgress && ` — ${processed}/${eligible} pages`}
+          {chunks > 0 && `, ${chunks} chunks`}
+        </span>
+        {hasProgress && (
+          <div className="h-1 rounded-full bg-bg-base overflow-hidden w-full">
+            <div
+              className="h-full bg-accent transition-all duration-300 rounded-full"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+        {!hasProgress && (
+          <div className="h-1 rounded-full bg-bg-base overflow-hidden w-full">
+            <div className="h-full bg-accent/50 animate-pulse rounded-full w-full" />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <span className="text-[11px] text-expense flex items-center gap-1">
+        <X className="h-3 w-3 shrink-0" />
+        {progress.error ? progress.error.slice(0, 50) : 'Error'}
+      </span>
+    )
+  }
+
+  if (status === 'ready' && chunks > 0) {
+    return (
+      <span className="text-[11px] text-income flex items-center gap-1">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-income shrink-0" />
+        {processed > 1 ? `${processed} pages, ` : ''}{chunks} chunks
+      </span>
+    )
+  }
+
+  return null
+}
 
 type KnowledgeStatus = 'not_configured' | 'building' | 'ready' | 'error'
 
@@ -575,7 +638,7 @@ function KnowledgeStatusBadge({ status, chunkCount, sourceCount, indexedPageCoun
 export function SettingsPage() {
   const { accounts, addAccount, updateAccount, deleteAccount } = useSavingsAccounts()
   const { accounts: personalAccounts, addAccount: addPersonalAccount, updateAccount: updatePersonalAccount, deleteAccount: deletePersonalAccount } = usePersonalAccounts()
-  const { sources: knowledgeSources, statusData: kbStatusData, addSource, updateSource, removeSource } = useKnowledgeSources()
+  const { sources: knowledgeSources, statusData: kbStatusData, addSource, updateSource, removeSource, resyncSource } = useKnowledgeSources()
   const bumpCsvLoadKey = useStore((s) => s.bumpCsvLoadKey)
   const loadingState = useStore((s) => s.loadingState)
 
@@ -968,12 +1031,26 @@ export function SettingsPage() {
         <Card padding="none">
           {/* Status bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <KnowledgeStatusBadge
-              status={kbStatusData?.status ?? 'not_configured'}
-              chunkCount={kbStatusData?.chunkCount ?? 0}
-              sourceCount={kbStatusData?.sourceCount ?? 0}
-              indexedPageCount={kbStatusData?.indexedPageCount ?? 0}
-            />
+            <div className="flex flex-col gap-0.5">
+              <KnowledgeStatusBadge
+                status={kbStatusData?.status ?? 'not_configured'}
+                chunkCount={kbStatusData?.chunkCount ?? 0}
+                sourceCount={kbStatusData?.sourceCount ?? 0}
+                indexedPageCount={kbStatusData?.indexedPageCount ?? 0}
+              />
+              {kbStatusData?.status === 'building' && kbStatusData.currentSource && (
+                <span className="text-[11px] text-text-muted pl-3.5">
+                  {kbStatusData.phase !== 'idle' && kbStatusData.phase !== 'starting'
+                    ? kbStatusData.phase
+                    : `Processing ${kbStatusData.currentSource}…`}
+                </span>
+              )}
+              {kbStatusData && kbStatusData.queueLength > 0 && kbStatusData.status !== 'building' && (
+                <span className="text-[11px] text-text-muted pl-3.5">
+                  {kbStatusData.queueLength} source{kbStatusData.queueLength > 1 ? 's' : ''} queued
+                </span>
+              )}
+            </div>
             {!showKbAddForm && !editingKbUrl && (
               <Button variant="ghost" size="sm" onClick={() => setShowKbAddForm(true)}>
                 <Plus className="h-3.5 w-3.5" />
@@ -1040,34 +1117,63 @@ export function SettingsPage() {
                       <Button variant="destructive" size="sm" onClick={() => void handleKbDelete(src.url)}>Remove</Button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-[13px] font-medium text-text-primary truncate">{src.name}</p>
-                          {src.mode === 'site' && (
-                            <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                              Site crawl
-                            </span>
+                    <div className="flex flex-col gap-1.5 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[13px] font-medium text-text-primary truncate">{src.name}</p>
+                            {src.mode === 'site' && (
+                              <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                                Site crawl
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-text-muted truncate">{src.url}</p>
+                          {src.mode === 'site' && src.policy?.includePaths && src.policy.includePaths.length > 0 && (
+                            <p className="text-[10px] text-text-muted/70 truncate font-mono mt-0.5">
+                              include: {src.policy.includePaths.join(', ')}
+                            </p>
                           )}
                         </div>
-                        <p className="text-[11px] text-text-muted truncate">{src.url}</p>
-                        {src.mode === 'site' && src.policy?.includePaths && src.policy.includePaths.length > 0 && (
-                          <p className="text-[10px] text-text-muted/70 truncate font-mono mt-0.5">
-                            include: {src.policy.includePaths.join(', ')}
-                          </p>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Resync button */}
+                          {(() => {
+                            const sp = kbStatusData?.sourceProgress?.[src.url]
+                            const busy = sp?.status === 'queued' || sp?.status === 'building'
+                            return (
+                              <button
+                                onClick={() => void resyncSource(src.url)}
+                                disabled={busy}
+                                title={busy ? 'Already syncing…' : 'Resync this source'}
+                                className={cn(
+                                  'rounded-[6px] p-1.5 text-text-muted transition-colors',
+                                  busy
+                                    ? 'opacity-40 cursor-not-allowed'
+                                    : 'hover:bg-bg-elevated hover:text-text-secondary',
+                                )}
+                              >
+                                <RotateCcw className={cn('h-3.5 w-3.5', busy && 'animate-spin')} strokeWidth={1.75} />
+                              </button>
+                            )
+                          })()}
+                          <button onClick={() => { setShowKbAddForm(false); setEditingKbUrl(src.url) }}
+                            title="Edit"
+                            className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-secondary">
+                            <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          </button>
+                          <button onClick={() => setDeletingKbUrl(src.url)} title="Remove"
+                            className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-expense-dim hover:text-expense">
+                            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => { setShowKbAddForm(false); setEditingKbUrl(src.url) }}
-                          title="Edit"
-                          className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-secondary">
-                          <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        </button>
-                        <button onClick={() => setDeletingKbUrl(src.url)} title="Remove"
-                          className="rounded-[6px] p-1.5 text-text-muted transition-colors hover:bg-expense-dim hover:text-expense">
-                          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        </button>
-                      </div>
+                      {/* Per-source progress */}
+                      {(() => {
+                        const sp = kbStatusData?.sourceProgress?.[src.url]
+                        return sp && sp.status !== 'idle' ? (
+                          <SourceProgressIndicator progress={sp} />
+                        ) : null
+                      })()}
                     </div>
                   )}
                 </li>

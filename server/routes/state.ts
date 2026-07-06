@@ -36,6 +36,7 @@ import type { StateStore } from '../services/stateStore.js'
 import {
   rebuildKnowledgeBase,
   getKnowledgeStatus,
+  enqueueKnowledgeSourceResync,
 } from '../services/knowledgeBase.js'
 import type { KnowledgeSource } from '../services/knowledgeBase.js'
 
@@ -376,6 +377,34 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
       lastUpdated: new Date().toISOString(),
       data: statusData,
     })
+  })
+
+  /** POST /api/state/knowledge/resync-source */
+  router.post('/knowledge/resync-source', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+    if (
+      typeof body !== 'object' || body === null ||
+      typeof (body as Record<string, unknown>).url !== 'string'
+    ) {
+      res.status(400).json({ error: 'Body must be { url: string }' })
+      return
+    }
+    const { url } = body as { url: string }
+
+    // Load saved sources, find the matching one
+    const saved = await store.read<{ sources: KnowledgeSource[] }>('knowledge').catch(() => null)
+    if (!saved?.sources) {
+      res.status(404).json({ error: 'No knowledge sources configured' })
+      return
+    }
+    const source = saved.sources.find((s) => s.url === url)
+    if (!source) {
+      res.status(404).json({ error: `Source not found: ${url}` })
+      return
+    }
+
+    const result = enqueueKnowledgeSourceResync(source, knowledgeBasePath)
+    res.status(202).json({ ok: true, ...result })
   })
 
   // ── Anomaly analysis results (read-only) ──────────────────────────────────
