@@ -77,20 +77,21 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
   }, [])
 
   const setOverride = useCallback((txId: string, categoryId: string) => {
-    setOverrides((prev) => {
-      const updated = { ...prev, [txId]: categoryId }
-      persistAll(updated)
-      return updated
-    })
+    // Compute and persist synchronously so recategorize() reads fresh data
+    // in the same event handler. React state setter callbacks are deferred
+    // to the render phase — putting persistAll inside them causes recategorize()
+    // to read stale localStorage before the write happens.
+    const updated = { ...readOverridesFromStorage(), [txId]: categoryId }
+    persistAll(updated)
+    setOverrides(updated)
   }, [])
 
   const removeOverride = useCallback((txId: string) => {
-    setOverrides((prev) => {
-      const updated = { ...prev }
-      delete updated[txId]
-      persistAll(updated)
-      return updated
-    })
+    const current = readOverridesFromStorage()
+    if (!Object.prototype.hasOwnProperty.call(current, txId)) return
+    const { [txId]: _, ...updated } = current
+    persistAll(updated)
+    setOverrides(updated)
   }, [])
 
   const clearAll = useCallback(() => {
