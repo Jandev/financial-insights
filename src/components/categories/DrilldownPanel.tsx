@@ -10,7 +10,7 @@ import type { Transaction } from '@/types/transaction'
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface DrilldownPanelProps {
-  categoryId: string
+  categoryIds: string[]
   name: string
   color: string
   transactions: Transaction[]
@@ -20,7 +20,7 @@ interface DrilldownPanelProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DrilldownPanel({
-  categoryId,
+  categoryIds,
   name,
   color,
   transactions,
@@ -38,7 +38,7 @@ export function DrilldownPanel({
     [active],
   )
 
-  const isUncategorized = categoryId === 'uncategorized'
+  const hasUncategorized = categoryIds.includes('uncategorized')
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -97,7 +97,7 @@ export function DrilldownPanel({
                     </td>
 
                     {/* Assign button (uncategorized only) */}
-                    {isUncategorized && (
+                    {hasUncategorized && tx.category === 'uncategorized' && (
                       <td className="py-1.5 pl-0.5 w-0">
                         <QuickAssignButton tx={tx} />
                       </td>

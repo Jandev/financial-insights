@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type ReactNode } from 'react'
+import { useState, useCallback, useRef, useMemo, type ReactNode } from 'react'
 import { Pencil, Trash2, Plus, AlertTriangle, Check, ChevronRight, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -529,6 +529,42 @@ interface RuleEditorProps {
   onResetDefaultName: (id: string) => void
 }
 
+function RuleGroupSection({
+  name,
+  count,
+  children,
+}: {
+  name: string
+  count: number
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1 text-left hover:bg-bg-elevated transition-colors duration-100 cursor-pointer"
+      >
+        <ChevronRight
+          size={12}
+          className={cn(
+            'shrink-0 text-text-muted transition-transform duration-150',
+            open && 'rotate-90',
+          )}
+        />
+        <span className="min-w-0 flex-1 text-[11px] font-medium text-text-secondary truncate">{name}</span>
+        <span className="inline-flex items-center rounded-full bg-bg-elevated border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+          {count}
+        </span>
+      </button>
+
+      {open && children}
+    </div>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function RuleEditor({
@@ -577,6 +613,32 @@ export function RuleEditor({
     setEditingId(null)
   }, [onResetToDefaults])
 
+  const groupedCustomRules = useMemo(() => {
+    const groups = new Map<string, CategoryRule[]>()
+    for (const rule of customRules) {
+      const name = rule.name.trim() || 'Unnamed'
+      const bucket = groups.get(name) ?? []
+      bucket.push(rule)
+      groups.set(name, bucket)
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map(([name, rules]) => ({ name, rules }))
+  }, [customRules])
+
+  const groupedDefaultRules = useMemo(() => {
+    const groups = new Map<string, CategoryRule[]>()
+    for (const rule of DEFAULT_RULES.filter((r) => r.id !== 'uncategorized')) {
+      const name = defaultNameOverrides[rule.id] ?? rule.name
+      const bucket = groups.get(name) ?? []
+      bucket.push(rule)
+      groups.set(name, bucket)
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map(([name, rules]) => ({ name, rules }))
+  }, [defaultNameOverrides])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
@@ -609,48 +671,52 @@ export function RuleEditor({
             <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">
               Custom
             </p>
-            <div className="space-y-1.5">
-              {customRules.map((rule) => (
-                <div key={rule.id} className="space-y-1.5">
-                  {editingId === rule.id ? (
-                    <RuleForm
-                      initial={rule}
-                      onSave={(draft) => handleUpdate(rule.id, draft)}
-                      onCancel={() => setEditingId(null)}
-                    />
-                  ) : deletingId === rule.id ? (
-                    /* Inline delete confirmation */
-                    <div className="flex items-center gap-2 rounded-lg border border-expense/20 bg-expense-dim px-3 py-2">
-                      <AlertTriangle size={12} className="text-expense shrink-0" />
-                      <span className="flex-1 text-xs text-expense">Delete "{rule.name}"?</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteConfirm(rule.id)}
-                        className="text-xs font-medium text-expense hover:text-expense/80 cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingId(null)}
-                        className="text-xs text-text-muted hover:text-text-secondary cursor-pointer"
-                      >
-                        Cancel
-                      </button>
+            {groupedCustomRules.map((group) => (
+              <RuleGroupSection key={group.name} name={group.name} count={group.rules.length}>
+                <div className="space-y-1.5">
+                  {group.rules.map((rule) => (
+                    <div key={rule.id} className="space-y-1.5">
+                      {editingId === rule.id ? (
+                        <RuleForm
+                          initial={rule}
+                          onSave={(draft) => handleUpdate(rule.id, draft)}
+                          onCancel={() => setEditingId(null)}
+                        />
+                      ) : deletingId === rule.id ? (
+                        /* Inline delete confirmation */
+                        <div className="flex items-center gap-2 rounded-lg border border-expense/20 bg-expense-dim px-3 py-2">
+                          <AlertTriangle size={12} className="text-expense shrink-0" />
+                          <span className="flex-1 text-xs text-expense">Delete "{rule.name}"?</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConfirm(rule.id)}
+                            className="text-xs font-medium text-expense hover:text-expense/80 cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(null)}
+                            className="text-xs text-text-muted hover:text-text-secondary cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <CustomRuleRow
+                          rule={rule}
+                          onEdit={() => {
+                            setEditingId(rule.id)
+                            setIsAdding(false)
+                          }}
+                          onDelete={() => setDeletingId(rule.id)}
+                        />
+                      )}
                     </div>
-                  ) : (
-                    <CustomRuleRow
-                      rule={rule}
-                      onEdit={() => {
-                        setEditingId(rule.id)
-                        setIsAdding(false)
-                      }}
-                      onDelete={() => setDeletingId(rule.id)}
-                    />
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              </RuleGroupSection>
+            ))}
           </section>
         )}
 
@@ -662,18 +728,22 @@ export function RuleEditor({
             </p>
             <span className="text-[10px] text-text-muted">Read-only · click to expand · hover to rename</span>
           </div>
-          <div className="space-y-0.5">
-            {DEFAULT_RULES.filter((r) => r.id !== 'uncategorized').map((rule) => (
-              <DefaultRuleRow
-                key={rule.id}
-                rule={rule}
-                displayName={defaultNameOverrides[rule.id] ?? rule.name}
-                isOverridden={Object.prototype.hasOwnProperty.call(defaultNameOverrides, rule.id)}
-                onRename={(name) => onRenameDefault(rule.id, name)}
-                onResetName={() => onResetDefaultName(rule.id)}
-              />
-            ))}
-          </div>
+          {groupedDefaultRules.map((group) => (
+            <RuleGroupSection key={group.name} name={group.name} count={group.rules.length}>
+              <div className="space-y-0.5">
+                {group.rules.map((rule) => (
+                  <DefaultRuleRow
+                    key={rule.id}
+                    rule={rule}
+                    displayName={defaultNameOverrides[rule.id] ?? rule.name}
+                    isOverridden={Object.prototype.hasOwnProperty.call(defaultNameOverrides, rule.id)}
+                    onRename={(name) => onRenameDefault(rule.id, name)}
+                    onResetName={() => onResetDefaultName(rule.id)}
+                  />
+                ))}
+              </div>
+            </RuleGroupSection>
+          ))}
         </section>
 
         {/* Reset to defaults */}

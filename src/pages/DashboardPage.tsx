@@ -13,6 +13,7 @@ import { TopExpenses } from '@/components/dashboard/TopExpenses'
 import { SpaarpotjesWidget } from '@/components/dashboard/SpaarpotjesWidget'
 import { formatCurrency } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
+import { useCategoryRules } from '@/hooks/useCategoryRules'
 import type { Transaction } from '@/types/transaction'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ function Bone({ className }: { className: string }) {
 export function DashboardPage() {
   const [range, setRange] = useState<DateRange>('3m')
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
+  const { rules } = useCategoryRules()
 
   const { transactions, excludedIds, loadingState } = useStore(
     useShallow((s) => ({
@@ -212,20 +214,37 @@ export function DashboardPage() {
   }, [allActive, dateFrom])
 
   // ── Top 5 counterparties by spend in the selected month ──────────────────
+  const categoryNameById = useMemo(() => {
+    return new Map(rules.map((r) => [r.id, r.name]))
+  }, [rules])
+
   const topExpenses = useMemo(() => {
-    const map = new Map<string, { total: number; categoryId: string }>()
+    const map = new Map<string, { total: number; categories: Map<string, number> }>()
     for (const tx of monthTxns) {
       if (tx.amount >= 0) continue
       const key = tx.counterpartyName || '(unknown)'
-      const cur = map.get(key) ?? { total: 0, categoryId: tx.category }
+      const categoryName = categoryNameById.get(tx.category) ?? tx.category
+      const cur = map.get(key) ?? { total: 0, categories: new Map<string, number>() }
       cur.total += Math.abs(tx.amount)
+      cur.categories.set(categoryName, (cur.categories.get(categoryName) ?? 0) + 1)
       map.set(key, cur)
     }
+
     return [...map.entries()]
       .sort((a, b) => b[1].total - a[1].total)
       .slice(0, 5)
-      .map(([counterpartyName, { total, categoryId }]) => ({ counterpartyName, total, categoryId }))
-  }, [monthTxns])
+      .map(([counterpartyName, { total, categories }]) => {
+        let topCategoryName = ''
+        let topCount = 0
+        for (const [name, count] of categories) {
+          if (count > topCount) {
+            topCategoryName = name
+            topCount = count
+          }
+        }
+        return { counterpartyName, total, categoryName: topCategoryName }
+      })
+  }, [monthTxns, categoryNameById])
 
   // ─────────────────────────────────────────────────────────────────────────────
 

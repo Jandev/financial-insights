@@ -55,8 +55,18 @@ function keyToIsoPeriod(key: string): string {
 }
 
 /** Build category breakdown totals from a list of transactions. */
+interface GroupedCategoryTotal {
+  groupKey: string
+  categoryIds: string[]
+  name: string
+  color: string
+  total: number
+  percentage: number
+}
+
 function buildCategoryTotals(txns: Transaction[], rules: CategoryRule[]): {
-  categoryId: string
+  groupKey: string
+  categoryIds: string[]
   name: string
   color: string
   total: number
@@ -64,23 +74,34 @@ function buildCategoryTotals(txns: Transaction[], rules: CategoryRule[]): {
 }[] {
   // Build meta from the full ruleset (covers custom + default rules)
   const meta = new Map(rules.map((r) => [r.id, { name: r.name, color: r.color }]))
-  const map = new Map<string, number>()
+  const map = new Map<string, Omit<GroupedCategoryTotal, 'percentage'>>()
 
   for (const tx of txns) {
-    map.set(tx.category, (map.get(tx.category) ?? 0) + Math.abs(tx.amount))
+    const m = meta.get(tx.category)
+    const groupKey = m?.name ?? tx.category
+    const existing = map.get(groupKey)
+    if (existing) {
+      existing.total += Math.abs(tx.amount)
+      if (!existing.categoryIds.includes(tx.category)) existing.categoryIds.push(tx.category)
+      continue
+    }
+
+    map.set(groupKey, {
+      groupKey,
+      categoryIds: [tx.category],
+      name: groupKey,
+      color: m?.color ?? '#8E8E93',
+      total: Math.abs(tx.amount),
+    })
   }
 
-  const grandTotal = [...map.values()].reduce((s, v) => s + v, 0)
+  const grandTotal = [...map.values()].reduce((s, v) => s + v.total, 0)
 
-  return [...map.entries()]
-    .map(([categoryId, total]) => {
-      const m = meta.get(categoryId)
+  return [...map.values()]
+    .map((group) => {
       return {
-        categoryId,
-        name: m?.name ?? categoryId,
-        color: m?.color ?? '#8E8E93',
-        total,
-        percentage: grandTotal > 0 ? (total / grandTotal) * 100 : 0,
+        ...group,
+        percentage: grandTotal > 0 ? (group.total / grandTotal) * 100 : 0,
       }
     })
     .sort((a, b) => b.total - a.total)
@@ -300,7 +321,8 @@ export function MonthlyPage() {
   const incomeSlices = useMemo<DonutSlice[]>(
     () =>
       incomeCategoryTotals.map((c) => ({
-        categoryId: c.categoryId,
+        groupKey: c.groupKey,
+        categoryIds: c.categoryIds,
         name: c.name,
         color: c.color,
         total: c.total,
@@ -311,7 +333,8 @@ export function MonthlyPage() {
   const expenseSlices = useMemo<DonutSlice[]>(
     () =>
       expenseCategoryTotals.map((c) => ({
-        categoryId: c.categoryId,
+        groupKey: c.groupKey,
+        categoryIds: c.categoryIds,
         name: c.name,
         color: c.color,
         total: c.total,
@@ -323,7 +346,8 @@ export function MonthlyPage() {
   const incomeBarItems = useMemo<BarListItem[]>(
     () =>
       incomeCategoryTotals.map((c) => ({
-        categoryId: c.categoryId,
+        groupKey: c.groupKey,
+        categoryIds: c.categoryIds,
         name: c.name,
         color: c.color,
         total: c.total,
@@ -334,7 +358,8 @@ export function MonthlyPage() {
   const expenseBarItems = useMemo<BarListItem[]>(
     () =>
       expenseCategoryTotals.map((c) => ({
-        categoryId: c.categoryId,
+        groupKey: c.groupKey,
+        categoryIds: c.categoryIds,
         name: c.name,
         color: c.color,
         total: c.total,
@@ -344,16 +369,35 @@ export function MonthlyPage() {
   )
 
   // ── Active filter helpers ─────────────────────────────────────────────────
-  const incomeSelectedId =
-    activeFilter?.type === 'income' ? activeFilter.categoryId : null
-  const expenseSelectedId =
-    activeFilter?.type === 'expense' ? activeFilter.categoryId : null
+  const incomeSelectedKey =
+    activeFilter?.type === 'income' ? activeFilter.groupKey : null
+  const expenseSelectedKey =
+    activeFilter?.type === 'expense' ? activeFilter.groupKey : null
 
-  function handleIncomeSelect(id: string | null) {
-    setActiveFilter(id ? { categoryId: id, type: 'income' } : null)
+  function handleIncomeSelect(groupKey: string | null) {
+    if (!groupKey) {
+      setActiveFilter(null)
+      return
+    }
+    const selected = incomeCategoryTotals.find((c) => c.groupKey === groupKey)
+    if (!selected) {
+      setActiveFilter(null)
+      return
+    }
+    setActiveFilter({ groupKey: selected.groupKey, categoryIds: selected.categoryIds, type: 'income' })
   }
-  function handleExpenseSelect(id: string | null) {
-    setActiveFilter(id ? { categoryId: id, type: 'expense' } : null)
+
+  function handleExpenseSelect(groupKey: string | null) {
+    if (!groupKey) {
+      setActiveFilter(null)
+      return
+    }
+    const selected = expenseCategoryTotals.find((c) => c.groupKey === groupKey)
+    if (!selected) {
+      setActiveFilter(null)
+      return
+    }
+    setActiveFilter({ groupKey: selected.groupKey, categoryIds: selected.categoryIds, type: 'expense' })
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -482,12 +526,12 @@ export function MonthlyPage() {
                     slices={incomeSlices}
                     centerTotal={totalIncome}
                     centerLabel="Income"
-                    selectedId={incomeSelectedId}
+                    selectedKey={incomeSelectedKey}
                     onSelect={handleIncomeSelect}
                   />
                   <CategoryBarList
                     items={incomeBarItems}
-                    selectedId={incomeSelectedId}
+                    selectedKey={incomeSelectedKey}
                     onSelect={handleIncomeSelect}
                   />
                 </div>
@@ -499,12 +543,12 @@ export function MonthlyPage() {
                     slices={expenseSlices}
                     centerTotal={totalExpenses}
                     centerLabel="Expenses"
-                    selectedId={expenseSelectedId}
+                    selectedKey={expenseSelectedKey}
                     onSelect={handleExpenseSelect}
                   />
                   <CategoryBarList
                     items={expenseBarItems}
-                    selectedId={expenseSelectedId}
+                    selectedKey={expenseSelectedKey}
                     onSelect={handleExpenseSelect}
                   />
                 </div>

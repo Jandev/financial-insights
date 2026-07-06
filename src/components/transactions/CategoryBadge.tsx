@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { Popover as RadixPopover } from 'radix-ui'
 import { Search, Pencil, Check, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type CategoryRule } from '@/lib/categories'
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useStore } from '@/store'
@@ -14,6 +13,20 @@ interface CategoryPickerDropdownProps {
 }
 
 type PickerStep = 'list' | 'confirm'
+
+interface GroupedCategoryOption {
+  name: string
+  color: string
+  icon: string
+  ids: string[]
+  targetId: string
+}
+
+function pickTargetCategoryId(ids: string[], currentId: string): string {
+  if (ids.includes(currentId)) return currentId
+  const preferred = ids.find((id) => !id.startsWith('custom-'))
+  return preferred ?? ids[0] ?? currentId
+}
 
 /**
  * Popover content for selecting a category for a transaction.
@@ -27,34 +40,47 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
 
   const [step, setStep] = useState<PickerStep>('list')
   const [search, setSearch] = useState('')
-  const [pendingCategory, setPendingCategory] = useState<CategoryRule | null>(null)
+  const [pendingCategory, setPendingCategory] = useState<GroupedCategoryOption | null>(null)
 
   const hasOverride = Boolean(overrides[tx.id])
 
-  // Deduplicate rules by id (custom rules + DEFAULT_RULES, custom first)
+  // Group categories by display name (first-seen color/icon wins).
   const allCategories = useMemo(() => {
-    const seen = new Set<string>()
-    return rules.filter((r) => {
-      if (seen.has(r.id)) return false
-      seen.add(r.id)
-      return true
-    })
-  }, [rules])
+    const byName = new Map<string, Omit<GroupedCategoryOption, 'targetId'>>()
+    for (const rule of rules) {
+      const existing = byName.get(rule.name)
+      if (!existing) {
+        byName.set(rule.name, {
+          name: rule.name,
+          color: rule.color,
+          icon: rule.icon,
+          ids: [rule.id],
+        })
+        continue
+      }
+      if (!existing.ids.includes(rule.id)) existing.ids.push(rule.id)
+    }
+
+    return [...byName.values()].map((group) => ({
+      ...group,
+      targetId: pickTargetCategoryId(group.ids, tx.category),
+    }))
+  }, [rules, tx.category])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allCategories
     const q = search.toLowerCase()
-    return allCategories.filter((r) => r.name.toLowerCase().includes(q))
+    return allCategories.filter((g) => g.name.toLowerCase().includes(q))
   }, [allCategories, search])
 
-  function handleSelectCategory(rule: CategoryRule) {
-    setPendingCategory(rule)
+  function handleSelectCategory(group: GroupedCategoryOption) {
+    setPendingCategory(group)
     setStep('confirm')
   }
 
   function handleJustThis() {
     if (!pendingCategory) return
-    setOverride(tx.id, pendingCategory.id)
+    setOverride(tx.id, pendingCategory.targetId)
     recategorize()
     onClose()
   }
@@ -112,14 +138,14 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
             ) : (
               filtered.map((rule) => (
                 <button
-                  key={rule.id}
+                  key={rule.name}
                   type="button"
                   onClick={() => handleSelectCategory(rule)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-3 py-1.5 text-left',
                     'text-xs text-text-primary',
                     'hover:bg-bg-elevated transition-colors duration-100 cursor-pointer',
-                    tx.category === rule.id && 'bg-accent-dim',
+                    rule.ids.includes(tx.category) && 'bg-accent-dim',
                   )}
                 >
                   <span
@@ -127,7 +153,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
                     style={{ backgroundColor: rule.color }}
                   />
                   <span className="flex-1">{rule.name}</span>
-                  {tx.category === rule.id && (
+                  {rule.ids.includes(tx.category) && (
                     <Check size={10} className="text-accent shrink-0" />
                   )}
                 </button>

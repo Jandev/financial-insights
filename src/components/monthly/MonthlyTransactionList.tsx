@@ -9,7 +9,8 @@ import type { Transaction } from '@/types/transaction'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ActiveFilter {
-  categoryId: string
+  groupKey: string
+  categoryIds: string[]
   type: 'income' | 'expense'
 }
 
@@ -31,7 +32,7 @@ export function MonthlyTransactionList({ transactions, excludedIds, activeFilter
     if (activeFilter) {
       txns = txns.filter(
         (tx) =>
-          tx.category === activeFilter.categoryId &&
+          activeFilter.categoryIds.includes(tx.category) &&
           (activeFilter.type === 'income' ? tx.amount > 0 : tx.amount < 0),
       )
     }
