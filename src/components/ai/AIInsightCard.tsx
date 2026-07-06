@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { LLMGate } from './LLMGate'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
+import { readSSEStream } from '@/lib/sse'
 
 interface AIInsightCardProps {
   /** YYYY-MM, YYYY, or 'all-time' */
@@ -60,42 +61,29 @@ export function AIInsightCard({ period, periodLabel }: AIInsightCardProps) {
     let fullText = ''
 
     try {
-      const res = await fetch(`/api/llm/insights/${period}`, {
-        signal: abortRef.current.signal,
-      })
+      await readSSEStream<{ type: string; text?: string; cachedAt?: string }>(
+        `/api/llm/insights/${period}`,
+        { signal: abortRef.current.signal },
+        {
+          onData: (data) => {
+            if (data.type === 'token' && data.text) {
+              fullText += data.text
+              setDisplayText(fullText)
+              return
+            }
 
-      if (!res.ok || !res.body) throw new Error('Failed to fetch insight')
+            if (data.type === 'cached' && data.text) {
+              setDisplayText(data.text)
+              setInsight(period, data.text)
+              return
+            }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6)) as {
-            type: string
-            text?: string
-            cachedAt?: string
-          }
-
-          if (data.type === 'token' && data.text) {
-            fullText += data.text
-            setDisplayText(fullText)
-          } else if (data.type === 'cached' && data.text) {
-            setDisplayText(data.text)
-            setInsight(period, data.text)
-          } else if (data.type === 'done') {
-            setInsight(period, fullText)
-          }
-        }
-      }
+            if (data.type === 'done') {
+              setInsight(period, fullText)
+            }
+          },
+        },
+      )
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         console.error('[AIInsightCard]', err)
