@@ -28,7 +28,7 @@ export interface Condition {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CategoryRule {
+interface CategoryRuleBase {
   id: string
   /** Display name shown in the UI */
   name: string
@@ -37,25 +37,44 @@ export interface CategoryRule {
   /** Lucide icon name */
   icon: string
 
-  // ── New condition-based matching (custom rules) ───────────────────────────
-  /** Structured conditions — evaluated with `combinator`. Takes priority over legacy fields. */
-  conditions?: Condition[]
-  /** How multiple conditions are combined. Defaults to 'and'. */
-  combinator?: 'and' | 'or'
+}
 
-  // ── Legacy pattern-based matching (DEFAULT_RULES) ─────────────────────────
+export interface ConditionRule extends CategoryRuleBase {
+  kind: 'condition'
+  /** Structured conditions — evaluated with `combinator`. */
+  conditions: Condition[]
+  /** How multiple conditions are combined. Defaults to 'and'. */
+  combinator: 'and' | 'or'
+}
+
+export interface LegacyPatternRule extends CategoryRuleBase {
+  kind: 'legacy'
   /**
    * Case-insensitive substrings matched against
    * `counterpartyName + ' ' + description`.
    * An empty array means "match nothing via pattern" — use other filters only.
    */
-  patterns?: string[]
+  patterns: string[]
   /** When set, rule only fires for these transaction codes */
   transactionCodes?: TransactionCode[]
   /** When set, rule only fires when |amount| >= amountMin */
   amountMin?: number
+  /** When set, rule only fires when |amount| <= amountMax */
+  amountMax?: number
   /** When set: true = credit only (amount > 0), false = debit only (amount < 0) */
   isCredit?: boolean
+}
+
+export type CategoryRule = ConditionRule | LegacyPatternRule
+export type CategoryRuleDraft = Omit<ConditionRule, 'id'> | Omit<LegacyPatternRule, 'id'>
+export type CategoryRulePatch = Partial<CategoryRuleDraft>
+
+export function isConditionRule(rule: CategoryRule): rule is ConditionRule {
+  return rule.kind === 'condition'
+}
+
+export function isLegacyRule(rule: CategoryRule): rule is LegacyPatternRule {
+  return rule.kind === 'legacy'
 }
 
 /** Per-transaction manual overrides: transactionId → categoryId */
@@ -71,10 +90,10 @@ export type CategoryOverrides = Record<string, string>
 export const SPAARPOTJE_CATEGORIES = new Set(['spaarpotje', 'spaarpotje-withdrawal'])
 
 /**
- * Rule IDs that automatically categorize `tb` transactions as internal
- * transfers. Excluded from the rule engine so that internal-transfer is
- * only assigned when the counterparty IBAN is explicitly added to Personal
- * Accounts by the user.
+ * Rule IDs treated as internal-transfer aliases.
+ *
+ * `own-account-transfer` is kept here as a legacy alias for read-time
+ * coercion/filtering of older persisted state.
  */
 export const INTERNAL_TRANSFER_RULE_IDS = new Set(['internal-transfer', 'own-account-transfer'])
 
@@ -111,6 +130,7 @@ export const STORAGE_KEY_DEFAULT_NAME_OVERRIDES = 'financial-insights:default-na
  */
 export const DEFAULT_RULES: CategoryRule[] = [
   {
+    kind: 'legacy',
     id: 'income',
     name: 'Salary / Income',
     color: '#00C7BE',
@@ -119,6 +139,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     isCredit: true,
   },
   {
+    kind: 'legacy',
     id: 'groceries',
     name: 'Groceries',
     color: '#34C759',
@@ -137,6 +158,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'dining',
     name: 'Dining & Cafes',
     color: '#FF9500',
@@ -159,6 +181,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'transport',
     name: 'Transport',
     color: '#007AFF',
@@ -180,6 +203,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'utilities',
     name: 'Utilities',
     color: '#30B0C7',
@@ -202,6 +226,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'healthcare',
     name: 'Healthcare',
     color: '#FF3B30',
@@ -221,6 +246,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'subscriptions',
     name: 'Subscriptions',
     color: '#AF52DE',
@@ -241,6 +267,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
     ],
   },
   {
+    kind: 'legacy',
     id: 'rent',
     name: 'Rent / Mortgage',
     color: '#A2845E',
@@ -253,6 +280,7 @@ export const DEFAULT_RULES: CategoryRule[] = [
      * Applied by recategorize() based on counterpartyIban; never matched
      * via the rule engine (patterns is intentionally empty).
      */
+    kind: 'legacy',
     id: 'spaarpotje',
     name: 'Spaarpotje',
     color: '#30B0C7',
@@ -264,38 +292,31 @@ export const DEFAULT_RULES: CategoryRule[] = [
      * Spaarpotje withdrawal — money received FROM a named savings goal.
      * NOT counted as income. Applied by recategorize() based on counterpartyIban.
      */
+    kind: 'legacy',
     id: 'spaarpotje-withdrawal',
     name: 'Spaarpotje (opname)',
     color: '#5856D6',
     icon: 'PiggyBank',
     patterns: [],
   },
-    {
-      /**
-       * Internal transfer — money sent to/from a registered personal account.
-       * Assigned by recategorize() based on counterpartyIban matching the
-       * user's manually-configured personal accounts list.
-       * The `tb` transactionCode no longer acts as a fallback; unregistered
-       * tb transfers fall through to uncategorized.
-       */
-      id: 'internal-transfer',
-      name: 'Internal Transfer',
-      color: '#8E8E93',
-      icon: 'ArrowLeftRight',
-      patterns: [],
-    },
-    {
-      /**
-       * Own Account Transfer — retained for backward compatibility with
-       * existing category overrides. No longer auto-matched via transactionCode.
-       */
-      id: 'own-account-transfer',
-      name: 'Own Account Transfer',
-      color: '#8E8E93',
-      icon: 'ArrowLeftRight',
-      patterns: [],
-    },
   {
+    /**
+     * Internal transfer — money sent to/from a registered personal account.
+     * Assigned by recategorize() based on counterpartyIban matching the
+     * user's manually-configured personal accounts list.
+     *
+     * Note: the former duplicate `own-account-transfer` default rule was
+     * removed. Persisted references are coerced to `internal-transfer` at read-time.
+     */
+    kind: 'legacy',
+    id: 'internal-transfer',
+    name: 'Internal Transfer',
+    color: '#8E8E93',
+    icon: 'ArrowLeftRight',
+    patterns: [],
+  },
+  {
+    kind: 'legacy',
     id: 'uncategorized',
     name: 'Uncategorized',
     color: '#8E8E93',
@@ -349,18 +370,69 @@ function evaluateCondition(tx: Transaction, cond: Condition): boolean {
 
 // ─── Core categorization function ─────────────────────────────────────────────
 
+function matchesConditionRule(tx: Transaction, rule: ConditionRule): boolean {
+  const combinator = rule.combinator
+  return combinator === 'and'
+    ? rule.conditions.every((condition) => evaluateCondition(tx, condition))
+    : rule.conditions.some((condition) => evaluateCondition(tx, condition))
+}
+
+function matchesLegacyRule(tx: Transaction, rule: LegacyPatternRule): boolean {
+  // Skip rules that have no active matcher — they would match every transaction.
+  // Only the explicit `uncategorized` catch-all is allowed to match with no criteria.
+  const hasTransactionCodes = (rule.transactionCodes?.length ?? 0) > 0
+  const hasPatterns = rule.patterns.length > 0
+  const hasCreditFilter = rule.isCredit !== undefined
+  const hasAmountMinFilter = rule.amountMin !== undefined
+  const hasAmountMaxFilter = rule.amountMax !== undefined
+  if (!hasTransactionCodes && !hasPatterns && !hasCreditFilter && !hasAmountMinFilter && !hasAmountMaxFilter && rule.id !== 'uncategorized') {
+    return false
+  }
+
+  if (hasTransactionCodes && !rule.transactionCodes?.includes(tx.transactionCode)) {
+    return false
+  }
+
+  if (rule.isCredit !== undefined) {
+    const txIsCredit = tx.amount > 0
+    if (rule.isCredit !== txIsCredit) {
+      return false
+    }
+  }
+
+  if (rule.amountMin !== undefined && Math.abs(tx.amount) < rule.amountMin) {
+    return false
+  }
+
+  if (rule.amountMax !== undefined && Math.abs(tx.amount) > rule.amountMax) {
+    return false
+  }
+
+  if (hasPatterns) {
+    const haystack = `${tx.counterpartyName} ${tx.description}`.toLowerCase()
+    const matched = rule.patterns.some((pattern) => haystack.includes(pattern.toLowerCase()))
+    if (!matched) {
+      return false
+    }
+  }
+
+  return true
+}
+
+const RULE_MATCHERS = {
+  condition: matchesConditionRule,
+  legacy: matchesLegacyRule,
+} satisfies {
+  [K in CategoryRule['kind']]: (tx: Transaction, rule: Extract<CategoryRule, { kind: K }>) => boolean
+}
+
 /**
  * Assign a category id to a single transaction.
  *
- * For each rule (in order), two matching strategies are supported:
+ * For each rule (in order), matching is delegated by `rule.kind`:
  *
- * **New — condition-based** (custom rules created via the Rule Editor):
- *   If the rule has `conditions` (non-empty), all conditions are evaluated
- *   using the rule's `combinator` ('and' | 'or'). First matching rule wins.
- *
- * **Legacy — pattern-based** (DEFAULT_RULES):
- *   Falls back to the original transactionCodes / isCredit / amountMin /
- *   patterns evaluation when `conditions` is absent or empty.
+ * - `condition`: evaluates structured conditions using the configured combinator.
+ * - `legacy`: evaluates pattern/code/amount/direction filters.
  *
  * Designed for sync, rule-based use today.
  * Future: an async LLM-based replacement can drop in with the same signature
@@ -368,49 +440,10 @@ function evaluateCondition(tx: Transaction, cond: Condition): boolean {
  */
 export function categorize(tx: Transaction, rules: CategoryRule[]): string {
   for (const rule of rules) {
-    // ── New: condition-based evaluation ─────────────────────────────────────
-    if (rule.conditions && rule.conditions.length > 0) {
-      const combinator = rule.combinator ?? 'and'
-      const matches =
-        combinator === 'and'
-          ? rule.conditions.every((c) => evaluateCondition(tx, c))
-          : rule.conditions.some((c) => evaluateCondition(tx, c))
-      if (matches) return rule.id
-      continue
+    const matcher = RULE_MATCHERS[rule.kind] as (txValue: Transaction, ruleValue: CategoryRule) => boolean
+    if (matcher(tx, rule)) {
+      return rule.id
     }
-
-    // ── Legacy: pattern-based evaluation ────────────────────────────────────
-    // Skip rules that have no active matcher — they would match every transaction.
-    // Only the explicit `uncategorized` catch-all is allowed to match with no criteria.
-    const hasTransactionCodes = rule.transactionCodes && rule.transactionCodes.length > 0
-    const hasPatterns = rule.patterns && rule.patterns.length > 0
-    const hasCreditFilter = rule.isCredit !== undefined
-    const hasAmountFilter = rule.amountMin !== undefined
-    if (!hasTransactionCodes && !hasPatterns && !hasCreditFilter && !hasAmountFilter && rule.id !== 'uncategorized') {
-      continue
-    }
-
-    if (rule.transactionCodes && rule.transactionCodes.length > 0) {
-      if (!rule.transactionCodes.includes(tx.transactionCode)) continue
-    }
-
-    if (rule.isCredit !== undefined) {
-      const txIsCredit = tx.amount > 0
-      if (rule.isCredit !== txIsCredit) continue
-    }
-
-    if (rule.amountMin !== undefined) {
-      if (Math.abs(tx.amount) < rule.amountMin) continue
-    }
-
-    if (rule.patterns && rule.patterns.length > 0) {
-      const haystack = `${tx.counterpartyName} ${tx.description}`.toLowerCase()
-      const matched = rule.patterns.some((p) => haystack.includes(p.toLowerCase()))
-      if (!matched) continue
-    }
-
-    // All applicable filters passed — this rule wins
-    return rule.id
   }
 
   return 'uncategorized'
@@ -418,28 +451,125 @@ export function categorize(tx: Transaction, rules: CategoryRule[]): string {
 
 // ─── Rule migration utility ───────────────────────────────────────────────────
 
+function normalizeCategoryId(categoryId: string): string {
+  return categoryId === 'own-account-transfer' ? 'internal-transfer' : categoryId
+}
+
+function coerceCondition(raw: unknown, fallbackId: string, index: number): Condition | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
+
+  const value = raw as Record<string, unknown>
+  const id = typeof value.id === 'string' && value.id.trim().length > 0
+    ? value.id
+    : `coerced-${fallbackId}-${index}`
+
+  const field = value.field
+  const operator = value.operator
+  const conditionValue = value.value
+
+  const validField = field === 'description' || field === 'counterpartyIban' || field === 'direction' || field === 'amount'
+  const validOperator = operator === 'contains' || operator === 'equals' || operator === 'startsWith' || operator === 'is' || operator === 'gte' || operator === 'lte'
+
+  if (!validField || !validOperator || typeof conditionValue !== 'string') {
+    return null
+  }
+
+  return {
+    id,
+    field,
+    operator,
+    value: conditionValue,
+  }
+}
+
+function coerceRule(raw: unknown): CategoryRule | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
+
+  const value = raw as Record<string, unknown>
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.color !== 'string' ||
+    typeof value.icon !== 'string'
+  ) {
+    return null
+  }
+
+  const id = normalizeCategoryId(value.id)
+  const kind = value.kind
+
+  if (kind === 'condition' || Array.isArray(value.conditions)) {
+    const conditions = (Array.isArray(value.conditions) ? value.conditions : [])
+      .map((condition, index) => coerceCondition(condition, id, index))
+      .filter((condition): condition is Condition => condition !== null)
+
+    return {
+      kind: 'condition',
+      id,
+      name: value.name,
+      color: value.color,
+      icon: value.icon,
+      conditions,
+      combinator: value.combinator === 'or' ? 'or' : 'and',
+    }
+  }
+
+  const transactionCodes = Array.isArray(value.transactionCodes)
+    ? value.transactionCodes.filter((code): code is TransactionCode => typeof code === 'string')
+    : undefined
+
+  return {
+    kind: 'legacy',
+    id,
+    name: value.name,
+    color: value.color,
+    icon: value.icon,
+    patterns: Array.isArray(value.patterns)
+      ? value.patterns.filter((pattern): pattern is string => typeof pattern === 'string')
+      : [],
+    transactionCodes,
+    amountMin: typeof value.amountMin === 'number' ? value.amountMin : undefined,
+    amountMax: typeof value.amountMax === 'number' ? value.amountMax : undefined,
+    isCredit: typeof value.isCredit === 'boolean' ? value.isCredit : undefined,
+  }
+}
+
 /**
  * Migrate a legacy custom rule (patterns-based) to the new condition format.
- * Rules that already have `conditions` are returned unchanged.
+ * Rules that already have `kind: 'condition'` are returned unchanged.
  *
  * Called by `useCategoryRules` on load from localStorage so old rules are
  * automatically upgraded when the user next opens the app.
  */
 export function migrateCustomRule(rule: CategoryRule): CategoryRule {
-  // Already uses new condition system — nothing to do
-  if (rule.conditions !== undefined) return rule
+  if (isConditionRule(rule)) return rule
 
-  const conditions: Condition[] = (rule.patterns ?? []).map((p, i) => ({
-    id: `migrated-${rule.id}-${i}`,
+  // Keep advanced legacy rules as-is to preserve semantics.
+  const hasLegacyOnlyFilters =
+    (rule.transactionCodes?.length ?? 0) > 0 ||
+    rule.isCredit !== undefined ||
+    rule.amountMin !== undefined ||
+    rule.amountMax !== undefined
+  if (hasLegacyOnlyFilters) {
+    return rule
+  }
+
+  const conditions: Condition[] = rule.patterns.map((pattern, index) => ({
+    id: `migrated-${rule.id}-${index}`,
     field: 'description' as ConditionField,
     operator: 'contains' as ConditionOperator,
-    value: p,
+    value: pattern,
   }))
 
   // Multiple patterns were OR'd together in the legacy engine
   const combinator: 'and' | 'or' = conditions.length > 1 ? 'or' : 'and'
 
   return {
+    kind: 'condition',
     id: rule.id,
     name: rule.name,
     color: rule.color,
@@ -520,7 +650,13 @@ export function readRulesFromStorage(): CategoryRule[] {
     const raw = localStorage.getItem(STORAGE_KEY_RULES)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as CategoryRule[]) : []
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .map((rule) => coerceRule(rule))
+      .filter((rule): rule is CategoryRule => rule !== null)
   } catch {
     return []
   }
@@ -535,9 +671,16 @@ export function readOverridesFromStorage(): CategoryOverrides {
     const raw = localStorage.getItem(STORAGE_KEY_OVERRIDES)
     if (!raw) return {}
     const parsed = JSON.parse(raw)
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as CategoryOverrides)
-      : {}
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const result: CategoryOverrides = {}
+      for (const [txId, categoryId] of Object.entries(parsed)) {
+        if (typeof categoryId === 'string') {
+          result[txId] = normalizeCategoryId(categoryId)
+        }
+      }
+      return result
+    }
+    return {}
   } catch {
     return {}
   }

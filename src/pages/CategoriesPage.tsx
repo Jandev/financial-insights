@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { useActiveTransactions } from '@/store/selectors'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useStore } from '@/store'
-import type { CategoryRule } from '@/lib/categories'
+import type { CategoryRule, CategoryRuleDraft } from '@/lib/categories'
 import { CategoryBarChart } from '@/components/categories/CategoryBarChart'
 import { DrilldownPanel } from '@/components/categories/DrilldownPanel'
 import { RuleEditor } from '@/components/categories/RuleEditor'
@@ -155,7 +155,7 @@ export function CategoriesPage() {
 
   // ── Rule mutations (always followed by recategorize) ──────────────────────
   const handleAddRule = useCallback(
-    (draft: Omit<CategoryRule, 'id'>) => {
+    (draft: CategoryRuleDraft) => {
       addRule(draft)
       // recategorize will fire via the useEffect above
     },
@@ -163,8 +163,8 @@ export function CategoriesPage() {
   )
 
   const handleUpdateRule = useCallback(
-    (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => {
-      updateRule(id, patch)
+    (id: string, draft: CategoryRuleDraft) => {
+      updateRule(id, draft)
     },
     [updateRule],
   )

@@ -116,6 +116,7 @@ describe('categorize — transactionCodes filter', () => {
 
   it('custom rule with transactionCodes fires only for matching code', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'direct-debit',
       name: 'Direct Debit',
       color: '#000',
@@ -142,6 +143,7 @@ describe('categorize — isCredit filter', () => {
 
   it('custom isCredit:false rule only fires for negative amounts', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'expense-only',
       name: 'Expense Only',
       color: '#000',
@@ -161,6 +163,7 @@ describe('categorize — isCredit filter', () => {
 describe('categorize — amountMin filter', () => {
   it('matches when |amount| >= amountMin', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'large',
       name: 'Large',
       color: '#000',
@@ -176,6 +179,7 @@ describe('categorize — amountMin filter', () => {
 
   it('uses absolute amount (works for credits too)', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'big-income',
       name: 'Big Income',
       color: '#000',
@@ -194,6 +198,7 @@ describe('categorize — first-match-wins', () => {
   it('returns the first matching rule, not subsequent ones', () => {
     const rules: CategoryRule[] = [
       {
+        kind: 'legacy',
         id: 'first',
         name: 'First',
         color: '#000',
@@ -201,6 +206,7 @@ describe('categorize — first-match-wins', () => {
         patterns: ['albert heijn'],
       },
       {
+        kind: 'legacy',
         id: 'second',
         name: 'Second',
         color: '#000',
@@ -215,6 +221,7 @@ describe('categorize — first-match-wins', () => {
   it('custom rules prepended via mergeRules take priority over defaults', () => {
     const custom: CategoryRule[] = [
       {
+        kind: 'legacy',
         id: 'my-rule',
         name: 'My Rule',
         color: '#000',
@@ -256,7 +263,7 @@ describe('categorize — no patterns, only transactionCodes', () => {
 describe('mergeRules', () => {
   it('prepends custom rules before DEFAULT_RULES', () => {
     const custom: CategoryRule[] = [
-      { id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
+      { kind: 'legacy', id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
     ]
     const merged = mergeRules(custom)
     expect(merged[0].id).toBe('x')
@@ -290,10 +297,42 @@ describe('readRulesFromStorage', () => {
 
   it('returns parsed rules when valid', () => {
     const rules: CategoryRule[] = [
-      { id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
+      { kind: 'legacy', id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
     ]
     localStorage.setItem('financial-insights:category-rules', JSON.stringify(rules))
     expect(readRulesFromStorage()).toEqual(rules)
+    localStorage.clear()
+  })
+
+  it('coerces legacy persisted rules without kind', () => {
+    localStorage.setItem(
+      'financial-insights:category-rules',
+      JSON.stringify([
+        {
+          id: 'legacy-no-kind',
+          name: 'Legacy',
+          color: '#000',
+          icon: 'X',
+          patterns: ['foo'],
+        },
+      ]),
+    )
+
+    expect(readRulesFromStorage()).toEqual([
+      {
+        kind: 'legacy',
+        id: 'legacy-no-kind',
+        name: 'Legacy',
+        color: '#000',
+        icon: 'X',
+        patterns: ['foo'],
+        transactionCodes: undefined,
+        amountMin: undefined,
+        amountMax: undefined,
+        isCredit: undefined,
+      },
+    ])
+
     localStorage.clear()
   })
 })
@@ -322,6 +361,16 @@ describe('readOverridesFromStorage', () => {
     expect(readOverridesFromStorage()).toEqual(overrides)
     localStorage.clear()
   })
+
+  it('coerces own-account-transfer override to internal-transfer', () => {
+    localStorage.setItem(
+      'financial-insights:category-overrides',
+      JSON.stringify({ 'rabobank-001': 'own-account-transfer' }),
+    )
+
+    expect(readOverridesFromStorage()).toEqual({ 'rabobank-001': 'internal-transfer' })
+    localStorage.clear()
+  })
 })
 
 // ─── INTERNAL_TRANSFER_RULE_IDS — manual-only regime ─────────────────────────
@@ -330,6 +379,10 @@ describe('INTERNAL_TRANSFER_RULE_IDS filter', () => {
   it('contains internal-transfer and own-account-transfer', () => {
     expect(INTERNAL_TRANSFER_RULE_IDS.has('internal-transfer')).toBe(true)
     expect(INTERNAL_TRANSFER_RULE_IDS.has('own-account-transfer')).toBe(true)
+  })
+
+  it('default rules no longer include duplicate own-account-transfer', () => {
+    expect(DEFAULT_RULES.some((rule) => rule.id === 'own-account-transfer')).toBe(false)
   })
 
   it('tb falls to uncategorized when fallback rules are filtered out', () => {
@@ -350,6 +403,7 @@ describe('categorizeWithPersonalFallback', () => {
     })
     const customRules: CategoryRule[] = [
       {
+        kind: 'condition',
         id: 'custom-pocket-money',
         name: 'Pocket Money',
         color: '#000',

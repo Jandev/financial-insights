@@ -6,6 +6,7 @@ import {
   migrateCustomRule,
   applyDefaultNameOverrides,
   type CategoryRule,
+  type CategoryRuleDraft,
 } from '@/lib/categories'
 import { debouncePut } from '@/lib/serverState'
 import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
@@ -44,10 +45,10 @@ export interface UseCategoryRulesResult {
   customRules: CategoryRule[]
 
   /** Add a new custom rule. An `id` is auto-generated if not supplied. */
-  addRule: (rule: Omit<CategoryRule, 'id'> & { id?: string }) => void
+  addRule: (rule: CategoryRuleDraft & { id?: string }) => void
 
-  /** Partially update an existing custom rule by id. */
-  updateRule: (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => void
+  /** Replace an existing custom rule by id. */
+  updateRule: (id: string, rule: CategoryRuleDraft) => void
 
   /** Remove a custom rule by id. Default rules are not affected. */
   deleteRule: (id: string) => void
@@ -129,8 +130,13 @@ export function useCategoryRules(): UseCategoryRulesResult {
   )
 
   const addRule = useCallback(
-    (rule: Omit<CategoryRule, 'id'> & { id?: string }) => {
-      const newRule: CategoryRule = { ...rule, id: rule.id ?? generateId() }
+    (rule: CategoryRuleDraft & { id?: string }) => {
+      const nextId = rule.id ?? generateId()
+      const newRule: CategoryRule =
+        rule.kind === 'condition'
+          ? { ...rule, id: nextId }
+          : { ...rule, id: nextId }
+
       const updated = [...readRulesFromStorage(), newRule]
       persistAll(updated)
       // Notify all useCategoryRules instances so they re-read from localStorage.
@@ -143,8 +149,14 @@ export function useCategoryRules(): UseCategoryRulesResult {
   )
 
   const updateRule = useCallback(
-    (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => {
-      const updated = readRulesFromStorage().map((r) => (r.id === id ? { ...r, ...patch } : r))
+    (id: string, rule: CategoryRuleDraft) => {
+      const updated = readRulesFromStorage().map((existing) => {
+        if (existing.id !== id) return existing
+        return rule.kind === 'condition'
+          ? { ...rule, id }
+          : { ...rule, id }
+      })
+
       persistAll(updated)
       window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
     },

@@ -88,6 +88,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
   function handleAllFromCounterparty() {
     if (!pendingCategory) return
     addRule({
+      kind: 'condition',
       name: pendingCategory.name,
       color: pendingCategory.color,
       icon: pendingCategory.icon,
