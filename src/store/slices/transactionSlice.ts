@@ -9,6 +9,7 @@ import {
   readOverridesFromStorage,
   matchSpaarpotje,
   matchPersonalAccount,
+  INTERNAL_TRANSFER_RULE_IDS,
 } from '@/lib/categories'
 import {
   readSavingsAccountsFromStorage,
@@ -67,7 +68,8 @@ export const createTransactionSlice: StateCreator<
     if (transactions.length === 0) return
 
     const customRules = readRulesFromStorage()
-    const rules = mergeRules(customRules)
+    // Exclude tb-based fallback rules — internal-transfer only via explicit Personal Accounts.
+    const rules = mergeRules(customRules).filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
     const overrides = readOverridesFromStorage()
     const spaarpotjes = readSavingsAccountsFromStorage()
     const tagOverrides = readTagOverridesFromStorage()
@@ -88,13 +90,13 @@ export const createTransactionSlice: StateCreator<
         return { ...tx, category: manualOverride, tags }
       }
 
-      // 3. Personal account IBAN match → internal-transfer
+      // 3. Personal account IBAN match → internal-transfer (manual accounts only)
       if (matchPersonalAccount(tx, personalAccounts)) {
         const tags = tagOverrides[tx.id] ?? []
         return { ...tx, category: 'internal-transfer', tags }
       }
 
-      // 4. Rule-based categorization (includes `tb` → `internal-transfer` fallback)
+      // 4. Rule-based categorization (tb without matching personal account → uncategorized)
       const category = categorize(tx, rules)
       const tags = tagOverrides[tx.id] ?? []
 

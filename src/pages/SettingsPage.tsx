@@ -530,9 +530,6 @@ export function SettingsPage() {
             <div className="flex flex-col items-center gap-2 py-10 text-text-muted">
               <ArrowLeftRight className="h-8 w-8 opacity-40" strokeWidth={1.5} />
               <p className="text-sm">No personal accounts configured yet.</p>
-              <p className="text-xs text-text-muted/60 max-w-xs text-center">
-                Rabobank own-account transfers (tb) are auto-detected from your CSV files.
-              </p>
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -570,11 +567,6 @@ export function SettingsPage() {
                           <p className="text-[13px] font-mono text-text-primary">
                             {account.iban}
                           </p>
-                          {account.autoDetected && (
-                            <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                              Auto-detected
-                            </span>
-                          )}
                           <span className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
                             {ACCOUNT_TYPE_LABELS[account.type]}
                           </span>

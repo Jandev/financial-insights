@@ -1,6 +1,10 @@
 /**
  * Non-React storage helpers for personal accounts.
  * Safe to call from csvLoader.ts (outside React render cycle).
+ *
+ * Personal accounts are manually configured only. IBANs are no longer
+ * auto-detected from Rabobank `tb` transfers — users must add them explicitly
+ * in Settings → Personal Accounts.
  */
 
 import type { PersonalAccount } from '@/types/personalAccount'
@@ -27,31 +31,4 @@ export function readPersonalAccountsFromStorage(): PersonalAccount[] {
  */
 export function writePersonalAccountsToStorage(accounts: PersonalAccount[]): void {
   localStorage.setItem(STORAGE_KEY_PERSONAL_ACCOUNTS, JSON.stringify(accounts))
-}
-
-/**
- * Seed new auto-detected IBANs from Rabobank `tb` transactions into storage.
- * Only adds IBANs not already present. Ignores empty/blank strings.
- * Returns true if storage was updated (new accounts were added).
- */
-export function seedAutoDetectedIbans(ibans: string[]): boolean {
-  const current = readPersonalAccountsFromStorage()
-  const existing = new Set(current.map((a) => a.iban.toLowerCase()))
-  const newAccounts: PersonalAccount[] = []
-
-  for (const iban of ibans) {
-    const normalized = iban.trim()
-    if (!normalized || existing.has(normalized.toLowerCase())) continue
-    newAccounts.push({
-      iban: normalized,
-      label: '',
-      type: 'payment',
-      autoDetected: true,
-      enabled: true,
-    })
-  }
-
-  if (newAccounts.length === 0) return false
-  writePersonalAccountsToStorage([...current, ...newAccounts])
-  return true
 }

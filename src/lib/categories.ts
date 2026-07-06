@@ -70,6 +70,14 @@ export type CategoryOverrides = Record<string, string>
 export const SPAARPOTJE_CATEGORIES = new Set(['spaarpotje', 'spaarpotje-withdrawal'])
 
 /**
+ * Rule IDs that automatically categorize `tb` transactions as internal
+ * transfers. Excluded from the rule engine so that internal-transfer is
+ * only assigned when the counterparty IBAN is explicitly added to Personal
+ * Accounts by the user.
+ */
+export const INTERNAL_TRANSFER_RULE_IDS = new Set(['internal-transfer', 'own-account-transfer'])
+
+/**
  * Returns true if `tx` should be counted as income.
  * Spaarpotje withdrawals (money returning from savings) are excluded.
  */
@@ -261,32 +269,31 @@ export const DEFAULT_RULES: CategoryRule[] = [
     icon: 'PiggyBank',
     patterns: [],
   },
-  {
-    /**
-     * Internal transfer — money sent to/from a registered personal account
-     * (pocket money account, joint grocery account, etc.).
-     * Assigned by recategorize() based on counterpartyIban matching the
-     * user's personal accounts list. The `tb` transactionCode serves as a
-     * Rabobank-specific fallback for unregistered own-account transfers.
-     *
-     * These transactions STAY in income/expense totals — the transfer IS
-     * the spending/receiving event. Only shown distinctly in the UI.
-     */
-    id: 'internal-transfer',
-    name: 'Internal Transfer',
-    color: '#8E8E93',
-    icon: 'ArrowLeftRight',
-    patterns: [],
-    transactionCodes: ['tb'],
-  },
-  {
-    id: 'own-account-transfer',
-    name: 'Own Account Transfer',
-    color: '#8E8E93',
-    icon: 'ArrowLeftRight',
-    patterns: [],
-    transactionCodes: ['tb'],
-  },
+    {
+      /**
+       * Internal transfer — money sent to/from a registered personal account.
+       * Assigned by recategorize() based on counterpartyIban matching the
+       * user's manually-configured personal accounts list.
+       * The `tb` transactionCode no longer acts as a fallback; unregistered
+       * tb transfers fall through to uncategorized.
+       */
+      id: 'internal-transfer',
+      name: 'Internal Transfer',
+      color: '#8E8E93',
+      icon: 'ArrowLeftRight',
+      patterns: [],
+    },
+    {
+      /**
+       * Own Account Transfer — retained for backward compatibility with
+       * existing category overrides. No longer auto-matched via transactionCode.
+       */
+      id: 'own-account-transfer',
+      name: 'Own Account Transfer',
+      color: '#8E8E93',
+      icon: 'ArrowLeftRight',
+      patterns: [],
+    },
   {
     id: 'uncategorized',
     name: 'Uncategorized',
@@ -372,6 +379,16 @@ export function categorize(tx: Transaction, rules: CategoryRule[]): string {
     }
 
     // ── Legacy: pattern-based evaluation ────────────────────────────────────
+    // Skip rules that have no active matcher — they would match every transaction.
+    // Only the explicit `uncategorized` catch-all is allowed to match with no criteria.
+    const hasTransactionCodes = rule.transactionCodes && rule.transactionCodes.length > 0
+    const hasPatterns = rule.patterns && rule.patterns.length > 0
+    const hasCreditFilter = rule.isCredit !== undefined
+    const hasAmountFilter = rule.amountMin !== undefined
+    if (!hasTransactionCodes && !hasPatterns && !hasCreditFilter && !hasAmountFilter && rule.id !== 'uncategorized') {
+      continue
+    }
+
     if (rule.transactionCodes && rule.transactionCodes.length > 0) {
       if (!rule.transactionCodes.includes(tx.transactionCode)) continue
     }

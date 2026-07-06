@@ -50,7 +50,7 @@ These are different concepts:
 | Purpose | Named savings goals | Own payment/savings accounts |
 | Category | `spaarpotje` / `spaarpotje-withdrawal` | `internal-transfer` |
 | Included in totals | No — excluded | Yes — included |
-| Auto-detected | No — manual registration | Yes — from `tb` transaction codes |
+| Auto-detected | No — manual registration | No — manual registration |
 
 Register your own IBANs (joint account, secondary account, etc.) under **Settings → Personal Accounts** to mark those transfers as internal rather than income/expense.
 

@@ -14,6 +14,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useStore } from '@/store'
 import { debouncePut } from '@/lib/serverState'
+import { randomUUID } from '@/lib/uuid'
 import type { SavingsAccount } from '@/types/savingsAccount'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
 
@@ -58,7 +59,7 @@ function persistAll(accounts: SavingsAccount[]): void {
 }
 
 function generateId(): string {
-  return crypto.randomUUID()
+  return randomUUID()
 }
 
 /** Pick a default color that isn't already used by another pot (cycles if all taken). */

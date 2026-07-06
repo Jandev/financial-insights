@@ -6,9 +6,12 @@ import {
   mergeRules,
   readRulesFromStorage,
   readOverridesFromStorage,
+  matchPersonalAccount,
+  INTERNAL_TRANSFER_RULE_IDS,
   type CategoryRule,
 } from './categories'
 import type { Transaction } from '@/types/transaction'
+import type { PersonalAccount } from '@/types/personalAccount'
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -100,9 +103,9 @@ describe('categorize — pattern matching', () => {
 // ─── categorize — transactionCodes filter ─────────────────────────────────────
 
 describe('categorize — transactionCodes filter', () => {
-  it('matches own-account-transfer for code tb regardless of name', () => {
+  it('tb with no matching personal account falls through to uncategorized', () => {
     const tx = makeTx({ transactionCode: 'tb', counterpartyName: '' })
-    expect(categorize(tx, DEFAULT_RULES)).toBe('own-account-transfer')
+    expect(categorize(tx, DEFAULT_RULES)).toBe('uncategorized')
   })
 
   it('does not match own-account-transfer for code bc', () => {
@@ -241,9 +244,9 @@ describe('categorize — uncategorized fallback', () => {
 // ─── categorize — rule with no patterns + code filter ─────────────────────────
 
 describe('categorize — no patterns, only transactionCodes', () => {
-  it('matches any transaction with the right code when patterns is empty', () => {
+  it('tb falls through to uncategorized when internal-transfer rules have no transactionCodes', () => {
     const tx = makeTx({ transactionCode: 'tb', counterpartyName: 'Random Name' })
-    expect(categorize(tx, DEFAULT_RULES)).toBe('own-account-transfer')
+    expect(categorize(tx, DEFAULT_RULES)).toBe('uncategorized')
   })
 })
 
@@ -317,5 +320,68 @@ describe('readOverridesFromStorage', () => {
     localStorage.setItem('financial-insights:category-overrides', JSON.stringify(overrides))
     expect(readOverridesFromStorage()).toEqual(overrides)
     localStorage.clear()
+  })
+})
+
+// ─── INTERNAL_TRANSFER_RULE_IDS — manual-only regime ─────────────────────────
+
+describe('INTERNAL_TRANSFER_RULE_IDS filter', () => {
+  it('contains internal-transfer and own-account-transfer', () => {
+    expect(INTERNAL_TRANSFER_RULE_IDS.has('internal-transfer')).toBe(true)
+    expect(INTERNAL_TRANSFER_RULE_IDS.has('own-account-transfer')).toBe(true)
+  })
+
+  it('tb falls to uncategorized when fallback rules are filtered out', () => {
+    const filtered = DEFAULT_RULES.filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
+    const tx = makeTx({ transactionCode: 'tb', counterpartyName: '' })
+    expect(categorize(tx, filtered)).toBe('uncategorized')
+  })
+})
+
+// ─── matchPersonalAccount — manual accounts only ──────────────────────────────
+
+function makeAccount(overrides: Partial<PersonalAccount> = {}): PersonalAccount {
+  return {
+    iban: 'NL00RABO0000000002',
+    label: '',
+    type: 'payment',
+    autoDetected: false,
+    enabled: true,
+    ...overrides,
+  }
+}
+
+describe('matchPersonalAccount', () => {
+  it('returns true when enabled account IBAN matches', () => {
+    const tx = makeTx({ counterpartyIban: 'NL00RABO0000000002' })
+    expect(matchPersonalAccount(tx, [makeAccount()])).toBe(true)
+  })
+
+  it('returns false when account is disabled', () => {
+    const tx = makeTx({ counterpartyIban: 'NL00RABO0000000002' })
+    expect(matchPersonalAccount(tx, [makeAccount({ enabled: false })])).toBe(false)
+  })
+
+  it('returns false for empty accounts list', () => {
+    const tx = makeTx({ counterpartyIban: 'NL00RABO0000000002' })
+    expect(matchPersonalAccount(tx, [])).toBe(false)
+  })
+
+  it('returns false when IBAN does not match', () => {
+    const tx = makeTx({ counterpartyIban: 'NL00RABO0000000099' })
+    expect(matchPersonalAccount(tx, [makeAccount()])).toBe(false)
+  })
+
+  it('match is case-insensitive', () => {
+    const tx = makeTx({ counterpartyIban: 'nl00rabo0000000002' })
+    expect(matchPersonalAccount(tx, [makeAccount({ iban: 'NL00RABO0000000002' })])).toBe(true)
+  })
+
+  it('tb transaction without matching account is NOT internal-transfer', () => {
+    // Regression: deleted personal accounts must not re-appear via fallback
+    const tx = makeTx({ transactionCode: 'tb', counterpartyIban: 'NL00RABO0000000002' })
+    expect(matchPersonalAccount(tx, [])).toBe(false)
+    const filtered = DEFAULT_RULES.filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
+    expect(categorize(tx, filtered)).toBe('uncategorized')
   })
 })
