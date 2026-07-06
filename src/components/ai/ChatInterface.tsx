@@ -13,7 +13,7 @@ import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { randomUUID } from '@/lib/uuid'
 import { readSSEStream } from '@/lib/sse'
-import type { ChatMessage } from '@/store/slices/llmSlice'
+import type { ChatMessage } from '@/store/slices/llmTypes'
 
 const SUGGESTED_QUESTIONS = [
   'Where am I spending the most this month?',
@@ -26,6 +26,7 @@ export function ChatInterface() {
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const chatMessagesRef = useRef<ChatMessage[]>([])
 
   const chatThreadId = useStore((s) => s.chatThreadId)
   const chatMessages = useStore((s) => s.chatMessages)
@@ -35,7 +36,9 @@ export function ChatInterface() {
   const clearChat = useStore((s) => s.clearChat)
   const llmAvailable = useStore((s) => s.llmAvailable)
   const serverStateAvailable = useStore((s) => s.serverStateAvailable)
+  const aiCategories = useStore((s) => s.aiCategories)
   const setAiCategories = useStore((s) => s.setAiCategories)
+  const aiCategoriesRef = useRef(aiCategories)
 
   // Restore threadId from sessionStorage on mount
   useEffect(() => {
@@ -49,6 +52,14 @@ export function ChatInterface() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
+
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+  }, [chatMessages])
+
+  useEffect(() => {
+    aiCategoriesRef.current = aiCategories
+  }, [aiCategories])
 
   async function sendMessage(text: string) {
     if (!text.trim() || isSending) return
@@ -107,9 +118,7 @@ export function ChatInterface() {
             }
 
             if (data.type === 'tool_call') {
-              // Read current state directly — avoids stale closure over chatMessages
-              // captured at render time (would drop chips on multi-tool turns).
-              const currentMsgs = useStore.getState().chatMessages
+              const currentMsgs = chatMessagesRef.current
               const lastMsg = currentMsgs[currentMsgs.length - 1]
               updateLastAssistantMessage('', [
                 ...(lastMsg?.toolCalls ?? []),
@@ -133,7 +142,7 @@ export function ChatInterface() {
                       .map(([id, v]) => [id, { category: v.category, confidence: v.confidence, reasoning: v.reasoning, source: 'llm' as const }]),
                   )
                   if (Object.keys(newEntries).length > 0) {
-                    const existing = useStore.getState().aiCategories
+                    const existing = aiCategoriesRef.current
                     setAiCategories({ ...existing, ...newEntries })
                   }
                 })

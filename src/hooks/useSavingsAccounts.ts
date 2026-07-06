@@ -11,7 +11,7 @@
  * Pattern mirrors `useCategoryRules`.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useStore } from '@/store'
 import { randomUUID } from '@/lib/uuid'
 import { createPersistFns } from '@/lib/persistence'
@@ -78,6 +78,9 @@ export interface UseSavingsAccountsResult {
 
 export function useSavingsAccounts(): UseSavingsAccountsResult {
   const recategorize = useStore((s) => s.recategorize)
+  const setSavingsAccountsState = useStore((s) => s.setSavingsAccountsState)
+  const setTagOverridesState = useStore((s) => s.setTagOverridesState)
+
   const { persistAll } = useMemo(
     () => createPersistFns<SavingsAccount[]>(STORAGE_KEY_SPAARPOTJES, 'spaarpotjes', 'accounts'),
     [],
@@ -87,8 +90,22 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
     readSavingsAccountsFromStorage(),
   )
 
+  useEffect(() => {
+    setSavingsAccountsState(accounts)
+  }, [accounts, setSavingsAccountsState])
+
+  useEffect(() => {
+    setTagOverridesState(readTagOverridesFromStorage())
+  }, [setTagOverridesState])
+
   // Re-read from localStorage when server hydration writes fresh data.
-  useStorageHydration(readSavingsAccountsFromStorage, setAccounts)
+  useStorageHydration(readSavingsAccountsFromStorage, (next) => {
+    setAccounts(next)
+    setSavingsAccountsState(next)
+  })
+
+  // Tag overrides are hydration-only today; keep store in sync for recategorize.
+  useStorageHydration(readTagOverridesFromStorage, setTagOverridesState)
 
   const addAccount = useCallback(
     (partial: Omit<SavingsAccount, 'id' | 'color'> & { id?: string; color?: string }) => {
@@ -100,11 +117,12 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
         }
         const updated = [...prev, account]
         persistAll(updated)
+        setSavingsAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setSavingsAccountsState],
   )
 
   const updateAccount = useCallback(
@@ -112,11 +130,12 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
       setAccounts((prev) => {
         const updated = prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
         persistAll(updated)
+        setSavingsAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setSavingsAccountsState],
   )
 
   const deleteAccount = useCallback(
@@ -124,11 +143,12 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
       setAccounts((prev) => {
         const updated = prev.filter((a) => a.id !== id)
         persistAll(updated)
+        setSavingsAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setSavingsAccountsState],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

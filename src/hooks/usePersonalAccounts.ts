@@ -11,7 +11,7 @@
  * Pattern mirrors `useSavingsAccounts`.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useStore } from '@/store'
 import { createPersistFns } from '@/lib/persistence'
 import { useStorageHydration } from '@/hooks/useStorageHydration'
@@ -41,6 +41,8 @@ export interface UsePersonalAccountsResult {
 
 export function usePersonalAccounts(): UsePersonalAccountsResult {
   const recategorize = useStore((s) => s.recategorize)
+  const setPersonalAccountsState = useStore((s) => s.setPersonalAccountsState)
+
   const { persistAll } = useMemo(
     () => createPersistFns<PersonalAccount[]>(STORAGE_KEY_PERSONAL_ACCOUNTS, 'personal-accounts', 'accounts'),
     [],
@@ -50,19 +52,27 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
     readPersonalAccountsFromStorage(),
   )
 
+  useEffect(() => {
+    setPersonalAccountsState(accounts)
+  }, [accounts, setPersonalAccountsState])
+
   // Re-read from localStorage when server hydration writes fresh data.
-  useStorageHydration(readPersonalAccountsFromStorage, setAccounts)
+  useStorageHydration(readPersonalAccountsFromStorage, (next) => {
+    setAccounts(next)
+    setPersonalAccountsState(next)
+  })
 
   const addAccount = useCallback(
     (account: Omit<PersonalAccount, 'autoDetected'>) => {
       setAccounts((prev) => {
         const updated = [...prev, { ...account, autoDetected: false }]
         persistAll(updated)
+        setPersonalAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setPersonalAccountsState],
   )
 
   const updateAccount = useCallback(
@@ -72,11 +82,12 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
           a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
         )
         persistAll(updated)
+        setPersonalAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setPersonalAccountsState],
   )
 
   const deleteAccount = useCallback(
@@ -86,11 +97,12 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
           (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
         )
         persistAll(updated)
+        setPersonalAccountsState(updated)
         return updated
       })
       recategorize()
     },
-    [persistAll, recategorize],
+    [persistAll, recategorize, setPersonalAccountsState],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

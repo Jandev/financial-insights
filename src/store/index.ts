@@ -13,14 +13,18 @@ export type { ExclusionSlice } from './slices/exclusionSlice'
 export type { FilterSlice, Filters } from './slices/filterSlice'
 export type { ThemeSlice, Theme } from './slices/themeSlice'
 export type { ServerStateSlice } from './slices/serverStateSlice'
+export type { LLMStatusSlice } from './slices/llmStatusSlice'
+export type { AICategoriesSlice } from './slices/aiCategoriesSlice'
+export type { AnomalySlice } from './slices/anomalySlice'
+export type { InsightSlice } from './slices/insightSlice'
+export type { ChatSlice } from './slices/chatSlice'
 export type {
-  LLMSlice,
   LLMProvider,
   AICategoryResult,
   AnomalyFinding,
   Severity,
   ChatMessage,
-} from './slices/llmSlice'
+} from './slices/llmTypes'
 
 // Derived selector hooks
 export {

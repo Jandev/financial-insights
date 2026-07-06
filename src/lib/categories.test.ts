@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
 import {
+  buildCategorizedTransactions,
   categorize,
   categorizeWithPersonalFallback,
   DEFAULT_RULES,
@@ -447,6 +448,70 @@ describe('categorizeWithPersonalFallback', () => {
 
     const category = categorizeWithPersonalFallback(tx, rules, [makeAccount()])
     expect(category).toBe('internal-transfer')
+  })
+})
+
+describe('buildCategorizedTransactions', () => {
+  it('applies spaarpotje match before manual overrides', () => {
+    const tx = makeTx({
+      id: 'tx-1',
+      category: 'uncategorized',
+      amount: -50,
+      counterpartyIban: 'NL00RABO0000001234',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: { 'tx-1': 'groceries' },
+      savingsAccounts: [{ id: 'pot-1', name: 'Holiday', iban: 'NL00RABO0000001234', color: '#00C7BE' }],
+      tagOverrides: {},
+      personalAccounts: [],
+    })
+
+    expect(result[0].category).toBe('spaarpotje')
+    expect(result[0].tags).toEqual(['Holiday'])
+  })
+
+  it('applies manual override before rule engine', () => {
+    const tx = makeTx({
+      id: 'tx-2',
+      category: 'uncategorized',
+      counterpartyName: 'Albert Heijn',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: { 'tx-2': 'rent' },
+      savingsAccounts: [],
+      tagOverrides: { 'tx-2': ['manual-tag'] },
+      personalAccounts: [],
+    })
+
+    expect(result[0].category).toBe('rent')
+    expect(result[0].tags).toEqual(['manual-tag'])
+  })
+
+  it('falls back to internal-transfer when no rule matches and personal account matches', () => {
+    const tx = makeTx({
+      id: 'tx-3',
+      category: 'uncategorized',
+      transactionCode: 'tb',
+      counterpartyName: 'Unknown',
+      counterpartyIban: 'NL00RABO0000000002',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: {},
+      savingsAccounts: [],
+      tagOverrides: {},
+      personalAccounts: [makeAccount()],
+    })
+
+    expect(result[0].category).toBe('internal-transfer')
   })
 })
 

@@ -80,6 +80,14 @@ export function isLegacyRule(rule: CategoryRule): rule is LegacyPatternRule {
 /** Per-transaction manual overrides: transactionId → categoryId */
 export type CategoryOverrides = Record<string, string>
 
+export interface CategorizationInputs {
+  rules: CategoryRule[]
+  overrides: CategoryOverrides
+  savingsAccounts: SavingsAccount[]
+  tagOverrides: Record<string, string[]>
+  personalAccounts: PersonalAccount[]
+}
+
 // ─── Spaarpotje category helpers ─────────────────────────────────────────────
 
 /**
@@ -637,6 +645,54 @@ export function categorizeWithPersonalFallback(
   const ruleCategory = categorize(tx, rules)
   if (ruleCategory !== 'uncategorized') return ruleCategory
   return matchPersonalAccount(tx, personalAccounts) ? 'internal-transfer' : ruleCategory
+}
+
+function sameTags(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+export function buildCategorizedTransactions(
+  transactions: Transaction[],
+  inputs: CategorizationInputs,
+): Transaction[] {
+  // Exclude tb-based fallback rules — internal-transfer only via explicit Personal Accounts.
+  const rules = mergeRules(inputs.rules).filter((rule) => !INTERNAL_TRANSFER_RULE_IDS.has(rule.id))
+
+  return transactions.map((tx) => {
+    // 1. Spaarpotje IBAN match — highest priority, overrides all rules
+    const potMatch = matchSpaarpotje(tx, inputs.savingsAccounts)
+    if (potMatch) {
+      const tags = inputs.tagOverrides[tx.id] ?? [potMatch.tag]
+      if (tx.category === potMatch.category && sameTags(tags, tx.tags ?? [])) {
+        return tx
+      }
+      return { ...tx, category: potMatch.category, tags }
+    }
+
+    // 2. Manual category override wins over auto-classification
+    const manualOverride = inputs.overrides[tx.id]
+    if (manualOverride !== undefined) {
+      const tags = inputs.tagOverrides[tx.id] ?? []
+      if (tx.category === manualOverride && sameTags(tags, tx.tags ?? [])) {
+        return tx
+      }
+      return { ...tx, category: manualOverride, tags }
+    }
+
+    // 3. Rule engine first; personal-account fallback applies only when uncategorized.
+    const category = categorizeWithPersonalFallback(tx, rules, inputs.personalAccounts)
+    const tags = inputs.tagOverrides[tx.id] ?? []
+
+    if (category === tx.category && sameTags(tags, tx.tags ?? [])) {
+      return tx
+    }
+
+    return { ...tx, category, tags }
+  })
 }
 
 // ─── Storage utilities (non-React — safe to call from csvLoader) ──────────────

@@ -13,7 +13,7 @@ import { LLMGate } from './LLMGate'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import type { AnomalyFinding, Severity } from '@/store/slices/llmSlice'
+import type { AnomalyFinding, Severity } from '@/store/slices/llmTypes'
 import { readSSEStream } from '@/lib/sse'
 
 const SEVERITY_CONFIG: Record<Severity, { label: string; color: string; Icon: typeof Info }> = {

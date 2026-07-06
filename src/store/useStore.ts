@@ -5,11 +5,25 @@ import { createExclusionSlice, type ExclusionSlice } from './slices/exclusionSli
 import { createFilterSlice, type FilterSlice } from './slices/filterSlice'
 import { createThemeSlice, applyThemeClass, type ThemeSlice } from './slices/themeSlice'
 import { createServerStateSlice, type ServerStateSlice } from './slices/serverStateSlice'
-import { createLLMSlice, type LLMSlice } from './slices/llmSlice'
+import { createLLMStatusSlice, type LLMStatusSlice } from './slices/llmStatusSlice'
+import { createAICategoriesSlice, type AICategoriesSlice } from './slices/aiCategoriesSlice'
+import { createAnomalySlice, type AnomalySlice } from './slices/anomalySlice'
+import { createInsightSlice, type InsightSlice } from './slices/insightSlice'
+import { createChatSlice, type ChatSlice } from './slices/chatSlice'
 
 // ─── Composed store type ──────────────────────────────────────────────────────
 
-export type StoreState = TransactionSlice & ExclusionSlice & FilterSlice & ThemeSlice & ServerStateSlice & LLMSlice
+export type StoreState =
+  TransactionSlice &
+  ExclusionSlice &
+  FilterSlice &
+  ThemeSlice &
+  ServerStateSlice &
+  LLMStatusSlice &
+  AICategoriesSlice &
+  AnomalySlice &
+  InsightSlice &
+  ChatSlice
 
 // ─── Persisted shape ──────────────────────────────────────────────────────────
 // Only these fields survive a browser refresh. Everything else resets to defaults.
@@ -31,7 +45,11 @@ export const useStore = create<StoreState>()(
       ...createFilterSlice(...args),
       ...createThemeSlice(...args),
       ...createServerStateSlice(...args),
-      ...createLLMSlice(...args),
+      ...createLLMStatusSlice(...args),
+      ...createAICategoriesSlice(...args),
+      ...createAnomalySlice(...args),
+      ...createInsightSlice(...args),
+      ...createChatSlice(...args),
     }),
     {
       name: 'financial-insights:store',

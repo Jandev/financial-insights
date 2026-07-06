@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { LLMGate } from './LLMGate'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
-import type { AICategoryResult } from '@/store/slices/llmSlice'
+import type { AICategoryResult } from '@/store/slices/llmTypes'
 import { readSSEStream } from '@/lib/sse'
 
 interface ProgressState {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './useStore'
-import { DEFAULT_RULES, readOverridesFromStorage, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
+import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
@@ -89,9 +89,7 @@ function buildCategoryMeta(rules: CategoryRule[]): Map<string, { name: string; c
  *   2. AI category (from aiCategories overlay) — applied when no manual override
  *   3. Rule-based category (tx.category) — fallback
  *
- * Manual overrides are detected by reading categoryOverrides from localStorage.
- * This is synchronous and cheap. Reactivity is ensured because recategorize()
- * always triggers a store update → useMemo dependency changes → fresh read.
+ * Manual overrides are read from the synced Zustand categorization state.
  */
 function applyAIOverlay(
   tx: Transaction,
@@ -114,22 +112,22 @@ function applyAIOverlay(
  * Used by charts and KPI cards.
  */
 export function useActiveTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters, aiCategories } = useStore(
+  const { transactions, excludedIds, filters, aiCategories, categoryOverridesState } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       filters: s.filters,
       aiCategories: s.aiCategories,
+      categoryOverridesState: s.categoryOverridesState,
     })),
   )
 
   return useMemo(() => {
-    const overrides = readOverridesFromStorage()
     return transactions
       .filter((tx) => !excludedIds.has(tx.id))
-      .map((tx) => applyAIOverlay(tx, aiCategories, overrides))
+      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState))
       .filter((tx) => matchesFilters(tx, filters))
-  }, [transactions, excludedIds, filters, aiCategories])
+  }, [transactions, excludedIds, filters, aiCategories, categoryOverridesState])
 }
 
 /**
@@ -139,7 +137,7 @@ export function useActiveTransactions(): Transaction[] {
  * AI category overlay is applied consistently with useActiveTransactions.
  */
 export function useFilteredTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds } = useStore(
+  const { transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
@@ -147,24 +145,24 @@ export function useFilteredTransactions(): Transaction[] {
       aiCategories: s.aiCategories,
       findings: s.findings,
       dismissedFindingIds: s.dismissedFindingIds,
+      categoryOverridesState: s.categoryOverridesState,
     })),
   )
 
   return useMemo(() => {
-    const overrides = readOverridesFromStorage()
     // Build active finding ID set once for O(1) lookup
     const activeFlaggedIds = filters.showFlaggedOnly
       ? new Set(findings.filter((f) => !dismissedFindingIds.has(f.transactionId)).map((f) => f.transactionId))
       : null
     return transactions
-      .map((tx) => applyAIOverlay(tx, aiCategories, overrides))
+      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState))
       .filter((tx) => {
         if (!matchesFilters(tx, filters)) return false
         if (!filters.showExcluded && excludedIds.has(tx.id)) return false
         if (activeFlaggedIds && !activeFlaggedIds.has(tx.id)) return false
         return true
       })
-  }, [transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds])
+  }, [transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState])
 }
 
 /** Number of currently excluded transactions. */
