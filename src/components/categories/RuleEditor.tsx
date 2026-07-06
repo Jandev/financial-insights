@@ -1,5 +1,5 @@
-import { useState, useCallback, type ReactNode } from 'react'
-import { Pencil, Trash2, Plus, AlertTriangle, Check, ChevronRight } from 'lucide-react'
+import { useState, useCallback, useRef, type ReactNode } from 'react'
+import { Pencil, Trash2, Plus, AlertTriangle, Check, ChevronRight, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_RULES,
@@ -309,7 +309,7 @@ function CustomRuleRow({ rule, onEdit, onDelete }: CustomRuleRowProps) {
   )
 }
 
-// ─── Default rule row (accordion) ────────────────────────────────────────────
+// ─── Default rule row (accordion + rename) ────────────────────────────────────
 
 function ConstraintBadge({ children }: { children: ReactNode }) {
   return (
@@ -319,8 +319,21 @@ function ConstraintBadge({ children }: { children: ReactNode }) {
   )
 }
 
-function DefaultRuleRow({ rule }: { rule: CategoryRule }) {
+interface DefaultRuleRowProps {
+  rule: CategoryRule
+  /** Current display name — may differ from rule.name when overridden */
+  displayName: string
+  /** Whether this rule's name has been overridden by the user */
+  isOverridden: boolean
+  onRename: (newName: string) => void
+  onResetName: () => void
+}
+
+function DefaultRuleRow({ rule, displayName, isOverridden, onRename, onResetName }: DefaultRuleRowProps) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const hasPatterns   = (rule.patterns?.length ?? 0) > 0
   const hasCodes      = (rule.transactionCodes?.length ?? 0) > 0
@@ -328,36 +341,137 @@ function DefaultRuleRow({ rule }: { rule: CategoryRule }) {
   const hasAmount     = rule.amountMin !== undefined
   const hasAnyCriteria = hasPatterns || hasCodes || hasDirection || hasAmount
 
+  function startEditing() {
+    setDraftName(displayName)
+    setEditing(true)
+    // Focus input on next tick after render
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  function commitEdit() {
+    const trimmed = draftName.trim()
+    if (trimmed && trimmed !== displayName) {
+      onRename(trimmed)
+    }
+    setEditing(false)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+  }
+
   return (
-    <div className="rounded-lg overflow-hidden">
+    <div className="group rounded-lg overflow-hidden">
       {/* Clickable header */}
-      <button
-        type="button"
-        onClick={() => hasAnyCriteria && setExpanded((v) => !v)}
+      <div
         className={cn(
-          'w-full flex items-center gap-2.5 px-2.5 py-2 text-left',
+          'flex items-center gap-2.5 px-2.5 py-2',
           'transition-all duration-100',
           hasAnyCriteria
-            ? 'hover:bg-bg-elevated cursor-pointer opacity-75 hover:opacity-100'
-            : 'opacity-60 cursor-default',
+            ? 'hover:bg-bg-elevated opacity-75 hover:opacity-100'
+            : 'opacity-60',
           expanded && 'bg-bg-elevated !opacity-100',
         )}
       >
-        <span
-          className="h-3 w-3 shrink-0 rounded-full"
-          style={{ backgroundColor: rule.color }}
-        />
-        <span className="flex-1 text-xs font-medium text-text-primary">{rule.name}</span>
-        {hasAnyCriteria && (
-          <ChevronRight
-            size={12}
-            className={cn(
-              'shrink-0 text-text-muted transition-transform duration-150',
-              expanded && 'rotate-90',
-            )}
+        {/* Expand toggle — only when criteria exist */}
+        <button
+          type="button"
+          onClick={() => hasAnyCriteria && setExpanded((v) => !v)}
+          className={cn(
+            'flex items-center gap-2.5 flex-1 min-w-0 text-left',
+            hasAnyCriteria ? 'cursor-pointer' : 'cursor-default',
+          )}
+        >
+          <span
+            className="h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: rule.color }}
           />
+
+          {editing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={draftName}
+              autoFocus
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
+                if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+              }}
+              onBlur={commitEdit}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'flex-1 min-w-0 h-5 rounded border border-accent/40 bg-bg-base px-1.5 text-xs text-text-primary',
+                'outline-none focus:ring-1 focus:ring-accent/40',
+              )}
+            />
+          ) : (
+            <span className={cn(
+              'flex-1 min-w-0 text-xs font-medium text-text-primary truncate',
+              isOverridden && 'text-accent',
+            )}>
+              {displayName}
+            </span>
+          )}
+
+          {!editing && hasAnyCriteria && (
+            <ChevronRight
+              size={12}
+              className={cn(
+                'shrink-0 text-text-muted transition-transform duration-150',
+                expanded && 'rotate-90',
+              )}
+            />
+          )}
+        </button>
+
+        {/* Hover actions: pencil + optional reset */}
+        {!editing && (
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            {isOverridden && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onResetName() }}
+                title={`Reset to "${rule.name}"`}
+                className="h-6 w-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors cursor-pointer"
+                aria-label={`Reset name to ${rule.name}`}
+              >
+                <RotateCcw size={11} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); startEditing() }}
+              className="h-6 w-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors cursor-pointer"
+              aria-label="Rename category"
+            >
+              <Pencil size={11} />
+            </button>
+          </div>
         )}
-      </button>
+
+        {/* Confirm / cancel while editing */}
+        {editing && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); commitEdit() }}
+              className="h-6 w-6 flex items-center justify-center rounded text-accent hover:bg-bg-surface transition-colors cursor-pointer"
+              aria-label="Confirm rename"
+            >
+              <Check size={11} />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); cancelEdit() }}
+              className="h-6 w-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors cursor-pointer"
+              aria-label="Cancel rename"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Expanded criteria */}
       {expanded && (
@@ -407,6 +521,12 @@ interface RuleEditorProps {
   onUpdate: (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => void
   onDelete: (id: string) => void
   onResetToDefaults: () => void
+  /** Current map of categoryId → custom display name for built-in defaults */
+  defaultNameOverrides: Record<string, string>
+  /** Set a custom display name for a built-in default category */
+  onRenameDefault: (id: string, name: string) => void
+  /** Reset the display name for a built-in default category to its English original */
+  onResetDefaultName: (id: string) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -417,6 +537,9 @@ export function RuleEditor({
   onUpdate,
   onDelete,
   onResetToDefaults,
+  defaultNameOverrides,
+  onRenameDefault,
+  onResetDefaultName,
 }: RuleEditorProps) {
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -537,11 +660,18 @@ export function RuleEditor({
             <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
               Built-in defaults
             </p>
-            <span className="text-[10px] text-text-muted">Read-only · click to expand</span>
+            <span className="text-[10px] text-text-muted">Read-only · click to expand · hover to rename</span>
           </div>
           <div className="space-y-0.5">
             {DEFAULT_RULES.filter((r) => r.id !== 'uncategorized').map((rule) => (
-              <DefaultRuleRow key={rule.id} rule={rule} />
+              <DefaultRuleRow
+                key={rule.id}
+                rule={rule}
+                displayName={defaultNameOverrides[rule.id] ?? rule.name}
+                isOverridden={Object.prototype.hasOwnProperty.call(defaultNameOverrides, rule.id)}
+                onRename={(name) => onRenameDefault(rule.id, name)}
+                onResetName={() => onResetDefaultName(rule.id)}
+              />
             ))}
           </div>
         </section>

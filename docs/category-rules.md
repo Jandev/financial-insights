@@ -73,6 +73,16 @@ The **AI Categorize** button (Categories page header) sends uncategorized transa
 - Progress streams via SSE — a progress bar shows batch completion.
 - The AI Advisor's `runCategorization` tool triggers the same pipeline programmatically.
 
+## Renaming built-in default categories
+
+Built-in default rule names (e.g. `Groceries`, `Transport`) can be renamed without creating a custom rule. On the **Categories page → Rule Editor → Built-in defaults** section, hover any row to reveal a pencil icon. Click it to edit the name inline; press Enter or click away to confirm, or Escape to cancel.
+
+When a name has been overridden, a **RotateCcw** (reset) icon also appears on hover. Click it to restore the English original for that category. The override for that single category is removed; other renames are unaffected.
+
+Renamed categories immediately appear in all charts, filters, and badges — display names are resolved through the active rule set, which applies overrides before rendering.
+
+The original English names in `DEFAULT_RULES` are never changed. Two categories sharing the same display name (e.g. a custom rule also called `Boodschappen`) coexist without conflict — their `id` values are different.
+
 ## Persistence
 
 | Store | Location | Mechanism |
@@ -80,5 +90,6 @@ The **AI Categorize** button (Categories page header) sends uncategorized transa
 | Manual + AI category overrides | `data/state/categories.json` | Debounced PUT to `/api/state/categories` |
 | Custom rules | `data/state/rules.json` | Debounced PUT to `/api/state/rules` |
 | Tag overrides | `data/state/tag-overrides.json` | Debounced PUT to `/api/state/tag-overrides` |
+| Default name overrides | `data/state/default-name-overrides.json` | Debounced PUT to `/api/state/default-name-overrides` |
 
 State is hydrated from the server into Zustand on mount via `useStateHydration`. Changes in the browser are written back with a short debounce.
