@@ -12,7 +12,7 @@
 
 import { useEffect } from 'react'
 import { useStore } from '@/store'
-import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
+import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES, STORAGE_KEY_DEFAULT_NAME_OVERRIDES } from '@/lib/categories'
 import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
 import { setServerAvailable } from '@/lib/serverState'
 import type { AnomalyFinding, AICategoryResult, LLMProvider } from '@/store/slices/llmSlice'
@@ -36,13 +36,14 @@ export function useStateHydration(): void {
 
     async function hydrate(): Promise<void> {
       // Fetch all keys in parallel; allSettled never throws
-      const [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult, anomaliesResult, llmStatusResult, dismissedResult, insightsResult] =
+      const [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult, defaultNameOverridesResult, anomaliesResult, llmStatusResult, dismissedResult, insightsResult] =
         await Promise.allSettled([
           fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/categories').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/spaarpotjes').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/tag-overrides').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/state/default-name-overrides').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/anomalies').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/llm/status').then((r) => (r.ok ? r.json() : null)),
           fetch('/api/state/dismissed').then((r) => (r.ok ? r.json() : null)),
@@ -52,7 +53,7 @@ export function useStateHydration(): void {
       if (cancelled) return
 
       // All non-LLM status calls rejected = Express not running
-      const stateFailed = [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult].every(
+      const stateFailed = [exclusionsResult, categoriesResult, rulesResult, spaarpotjesResult, tagOverridesResult, defaultNameOverridesResult].every(
         (r) => r.status === 'rejected',
       )
 
@@ -137,6 +138,12 @@ export function useStateHydration(): void {
       if (tagOverridesResult.status === 'fulfilled' && tagOverridesResult.value !== null) {
         const tagOverrides: Record<string, string[]> = tagOverridesResult.value?.data ?? {}
         localStorage.setItem(STORAGE_KEY_TAG_OVERRIDES, JSON.stringify(tagOverrides))
+      }
+
+      // Hydrate default name overrides into localStorage (hooks re-read via event)
+      if (defaultNameOverridesResult.status === 'fulfilled' && defaultNameOverridesResult.value !== null) {
+        const nameOverrides: Record<string, string> = defaultNameOverridesResult.value?.data ?? {}
+        localStorage.setItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES, JSON.stringify(nameOverrides))
       }
 
       // Notify hooks to re-read localStorage with the freshly hydrated data

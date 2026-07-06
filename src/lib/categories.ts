@@ -89,6 +89,7 @@ export function isExpenseTransaction(tx: Transaction): boolean {
 
 export const STORAGE_KEY_RULES = 'financial-insights:category-rules'
 export const STORAGE_KEY_OVERRIDES = 'financial-insights:category-overrides'
+export const STORAGE_KEY_DEFAULT_NAME_OVERRIDES = 'financial-insights:default-name-overrides'
 
 // ─── Default ruleset ─────────────────────────────────────────────────────────
 
@@ -505,6 +506,46 @@ export function readOverridesFromStorage(): CategoryOverrides {
   } catch {
     return {}
   }
+}
+
+/**
+ * Read default category name overrides from localStorage.
+ * Returns an empty object when nothing is stored or the value is unparseable.
+ */
+export function readDefaultNameOverrides(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      // Keep only entries where both key and value are strings
+      const result: Record<string, string> = {}
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof k === 'string' && typeof v === 'string') result[k] = v
+      }
+      return result
+    }
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Return a new array of rules with `name` replaced for any rule whose `id`
+ * has an entry in `overrides`. Rules without an override are unchanged.
+ * DEFAULT_RULES themselves are never mutated.
+ */
+export function applyDefaultNameOverrides(
+  rules: CategoryRule[],
+  overrides: Record<string, string>,
+): CategoryRule[] {
+  if (Object.keys(overrides).length === 0) return rules
+  return rules.map((r) =>
+    Object.prototype.hasOwnProperty.call(overrides, r.id)
+      ? { ...r, name: overrides[r.id] }
+      : r,
+  )
 }
 
 /**

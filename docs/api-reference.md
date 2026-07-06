@@ -65,6 +65,7 @@ All state endpoints use the same shape: GET returns the current value, PUT repla
 | `GET/PUT /api/state/spaarpotjes` | `spaarpotjes.json` | Savings goal definitions |
 | `GET/PUT /api/state/tag-overrides` | `tag-overrides.json` | Per-transaction tag overrides (`txId → string[]`) |
 | `GET/PUT /api/state/dismissed` | `dismissed.json` | Dismissed anomaly finding IDs |
+| `GET/PUT /api/state/default-name-overrides` | `default-name-overrides.json` | Custom display names for built-in default categories (`categoryId → displayName`) |
 
 ---
 

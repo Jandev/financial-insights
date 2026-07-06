@@ -58,7 +58,7 @@ function buildCategoryTotals(
 
 export function CategoriesPage() {
   const active = useActiveTransactions()
-  const { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults } =
+  const { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults, defaultNameOverrides, setDefaultNameOverride, removeDefaultNameOverride } =
     useCategoryRules()
   const recategorize = useStore((s) => s.recategorize)
   const aiCategories = useStore((s) => s.aiCategories)
@@ -161,6 +161,20 @@ export function CategoriesPage() {
     resetToDefaults()
   }, [resetToDefaults])
 
+  const handleRenameDefault = useCallback(
+    (id: string, name: string) => {
+      setDefaultNameOverride(id, name)
+    },
+    [setDefaultNameOverride],
+  )
+
+  const handleResetDefaultName = useCallback(
+    (id: string) => {
+      removeDefaultNameOverride(id)
+    },
+    [removeDefaultNameOverride],
+  )
+
   // ─────────────────────────────────────────────────────────────────────────
 
   const drilldownOpen = selectedId !== null && selectedCategory !== null
@@ -238,6 +252,9 @@ export function CategoriesPage() {
             onUpdate={handleUpdateRule}
             onDelete={handleDeleteRule}
             onResetToDefaults={handleResetToDefaults}
+            defaultNameOverrides={defaultNameOverrides}
+            onRenameDefault={handleRenameDefault}
+            onResetDefaultName={handleResetDefaultName}
           />
         </Card>
       </div>

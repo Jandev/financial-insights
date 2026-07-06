@@ -17,6 +17,8 @@
  *   PUT  /api/state/tag-overrides        — persist tag overrides
  *   GET  /api/state/dismissed            — load dismissed anomaly finding IDs
  *   PUT  /api/state/dismissed            — persist dismissed finding IDs
+ *   GET  /api/state/default-name-overrides — load custom display names for built-in categories
+ *   PUT  /api/state/default-name-overrides — persist custom display names
  *   GET  /api/state/anomalies            — load last anomaly analysis results (read-only)
  *   GET  /api/state/summary              — metadata: which keys exist, lastUpdated, sizes
  *   POST /api/state/reset                — delete all state files
@@ -219,9 +221,38 @@ export function createStateRouter(store: StateStore): Router {
     res.json({ ok: true })
   })
 
-  // ── Anomaly analysis results (read-only) ──────────────────────────────────
+  // ── Default category name overrides ───────────────────────────────────────
 
-  /** GET /api/state/anomalies */
+  /** GET /api/state/default-name-overrides */
+  router.get('/default-name-overrides', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<Record<string, string>>('default-name-overrides')
+    if (!data) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    res.json(data)
+  })
+
+  /** PUT /api/state/default-name-overrides */
+  router.put('/default-name-overrides', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    // Body must be a plain object with all-string values (categoryId → displayName)
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      Array.isArray(body) ||
+      !Object.values(body as Record<string, unknown>).every((v) => typeof v === 'string')
+    ) {
+      res.status(400).json({ error: 'Body must be Record<string, string>' })
+      return
+    }
+
+    await store.write('default-name-overrides', body as Record<string, string>)
+    res.json({ ok: true })
+  })
+
+  // ── Anomaly analysis results (read-only) ──────────────────────────────────
   router.get('/anomalies', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ findings: unknown[]; analyzedAt: string }>('anomalies')
     if (!data) {

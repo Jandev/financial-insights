@@ -4,11 +4,23 @@ import {
   STORAGE_KEY_RULES,
   readRulesFromStorage,
   migrateCustomRule,
+  applyDefaultNameOverrides,
   type CategoryRule,
 } from '@/lib/categories'
 import { debouncePut } from '@/lib/serverState'
+import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Broadcast on every addRule / updateRule / deleteRule so that ALL
+ * useCategoryRules() instances (one per CategoryBadge row, one in the picker,
+ * etc.) re-read from localStorage in the same React batch as recategorize().
+ * Without this, only the instance that called the mutation gets updated;
+ * CategoryBadge instances see stale customRules and show the raw id instead
+ * of the display name.
+ */
+const RULES_UPDATED_EVENT = 'category-rules-changed'
 
 function generateId(): string {
   return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -28,7 +40,7 @@ function persistAll(rules: CategoryRule[]): void {
 export interface UseCategoryRulesResult {
   /**
    * The active ruleset: custom rules (from localStorage) prepended before
-   * DEFAULT_RULES. Custom rules always take priority.
+   * DEFAULT_RULES (with any name overrides applied). Custom rules always take priority.
    */
   rules: CategoryRule[]
 
@@ -49,6 +61,18 @@ export interface UseCategoryRulesResult {
 
   /** Clear all custom rules, restoring the default ruleset. */
   resetToDefaults: () => void
+
+  /** Current map of categoryId → custom display name for built-in default rules. */
+  defaultNameOverrides: Record<string, string>
+
+  /** Set a custom display name for a built-in default rule. */
+  setDefaultNameOverride: (id: string, name: string) => void
+
+  /** Remove the custom display name for a single built-in default rule. */
+  removeDefaultNameOverride: (id: string) => void
+
+  /** Remove all custom display name overrides, restoring English defaults. */
+  resetDefaultNameOverrides: () => void
 }
 
 /**
@@ -80,56 +104,64 @@ export function useCategoryRules(): UseCategoryRulesResult {
     return migrated
   })
 
-  // Re-read from localStorage when server hydration writes fresh data.
-  // Also persist migrated format back to the server so it stays current.
+  const {
+    overrides: defaultNameOverrides,
+    setOverride: setDefaultNameOverride,
+    removeOverride: removeDefaultNameOverride,
+    resetOverrides: resetDefaultNameOverrides,
+  } = useDefaultNameOverrides()
+
+  // Re-read from localStorage when server hydration writes fresh data, OR when
+  // another useCategoryRules() instance mutates the ruleset.
   useEffect(() => {
     const handler = () => {
       const stored = readRulesFromStorage()
       const migrated = stored.map(migrateCustomRule)
       const didMigrate = migrated.some((r, i) => r !== stored[i])
-      // Write migrated format to both LS and server so they agree
       if (didMigrate) persistAll(migrated)
       setCustomRules(migrated)
     }
     window.addEventListener('state-hydrated', handler)
-    return () => window.removeEventListener('state-hydrated', handler)
+    window.addEventListener(RULES_UPDATED_EVENT, handler)
+    return () => {
+      window.removeEventListener('state-hydrated', handler)
+      window.removeEventListener(RULES_UPDATED_EVENT, handler)
+    }
   }, [])
 
   // Memoised so that useEffect comparisons in consumers stay stable
   const rules = useMemo<CategoryRule[]>(
-    () => [...customRules, ...DEFAULT_RULES],
-    [customRules],
+    () => [...customRules, ...applyDefaultNameOverrides(DEFAULT_RULES, defaultNameOverrides)],
+    [customRules, defaultNameOverrides],
   )
 
   const addRule = useCallback(
     (rule: Omit<CategoryRule, 'id'> & { id?: string }) => {
       const newRule: CategoryRule = { ...rule, id: rule.id ?? generateId() }
-      setCustomRules((prev) => {
-        const updated = [...prev, newRule]
-        persistAll(updated)
-        return updated
-      })
+      const updated = [...readRulesFromStorage(), newRule]
+      persistAll(updated)
+      // Notify all useCategoryRules instances so they re-read from localStorage.
+      // React 18 automatic batching groups these setCustomRules calls with the
+      // subsequent recategorize() Zustand update into one render, ensuring
+      // CategoryBadge sees the new rule name and the new tx.category together.
+      window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
     },
     [],
   )
 
   const updateRule = useCallback(
     (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => {
-      setCustomRules((prev) => {
-        const updated = prev.map((r) => (r.id === id ? { ...r, ...patch } : r))
-        persistAll(updated)
-        return updated
-      })
+      const updated = readRulesFromStorage().map((r) => (r.id === id ? { ...r, ...patch } : r))
+      persistAll(updated)
+      window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
     },
     [],
   )
 
   const deleteRule = useCallback((id: string) => {
-    setCustomRules((prev) => {
-      const updated = prev.filter((r) => r.id !== id)
-      persistAll(updated)
-      return updated
-    })
+    const updated = readRulesFromStorage().filter((r) => r.id !== id)
+    persistAll(updated)
+    window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
   }, [])
 
   const resetToDefaults = useCallback(() => {
@@ -138,5 +170,5 @@ export function useCategoryRules(): UseCategoryRulesResult {
     setCustomRules([])
   }, [])
 
-  return { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults }
+  return { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults, defaultNameOverrides, setDefaultNameOverride, removeDefaultNameOverride, resetDefaultNameOverrides }
 }
