@@ -11,21 +11,17 @@
  * Pattern mirrors `useSavingsAccounts`.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useStore } from '@/store'
-import { debouncePut } from '@/lib/serverState'
+import { createPersistFns } from '@/lib/persistence'
+import { useStorageHydration } from '@/hooks/useStorageHydration'
 import {
+  STORAGE_KEY_PERSONAL_ACCOUNTS,
   readPersonalAccountsFromStorage,
-  writePersonalAccountsToStorage,
 } from '@/lib/personalAccounts'
 import type { PersonalAccount } from '@/types/personalAccount'
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
-
-function persistAll(accounts: PersonalAccount[]): void {
-  writePersonalAccountsToStorage(accounts)
-  debouncePut('personal-accounts', { accounts })
-}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -45,19 +41,17 @@ export interface UsePersonalAccountsResult {
 
 export function usePersonalAccounts(): UsePersonalAccountsResult {
   const recategorize = useStore((s) => s.recategorize)
+  const { persistAll } = useMemo(
+    () => createPersistFns<PersonalAccount[]>(STORAGE_KEY_PERSONAL_ACCOUNTS, 'personal-accounts', 'accounts'),
+    [],
+  )
 
   const [accounts, setAccounts] = useState<PersonalAccount[]>(() =>
     readPersonalAccountsFromStorage(),
   )
 
   // Re-read from localStorage when server hydration writes fresh data.
-  useEffect(() => {
-    const handler = () => {
-      setAccounts(readPersonalAccountsFromStorage())
-    }
-    window.addEventListener('state-hydrated', handler)
-    return () => window.removeEventListener('state-hydrated', handler)
-  }, [])
+  useStorageHydration(readPersonalAccountsFromStorage, setAccounts)
 
   const addAccount = useCallback(
     (account: Omit<PersonalAccount, 'autoDetected'>) => {
@@ -68,7 +62,7 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
       })
       recategorize()
     },
-    [recategorize],
+    [persistAll, recategorize],
   )
 
   const updateAccount = useCallback(
@@ -82,7 +76,7 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
       })
       recategorize()
     },
-    [recategorize],
+    [persistAll, recategorize],
   )
 
   const deleteAccount = useCallback(
@@ -96,7 +90,7 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
       })
       recategorize()
     },
-    [recategorize],
+    [persistAll, recategorize],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }
