@@ -47,4 +47,15 @@ export function formatTime(date: Date): string {
   }).format(date)
 }
 
+export function normalizeIBAN(value: string): string {
+  return value.replace(/\s/g, '').toUpperCase()
+}
+
+export function validateIBAN(value: string): string | null {
+  const normalized = normalizeIBAN(value)
+  if (!normalized) return 'IBAN is required'
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalized)) return 'Invalid IBAN format'
+  return null
+}
+
 export type { ReactNode }
