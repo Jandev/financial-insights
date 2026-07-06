@@ -89,7 +89,8 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
   const removeOverride = useCallback((txId: string) => {
     const current = readOverridesFromStorage()
     if (!Object.prototype.hasOwnProperty.call(current, txId)) return
-    const { [txId]: _, ...updated } = current
+    const updated = { ...current }
+    delete updated[txId]
     persistAll(updated)
     setOverrides(updated)
   }, [])
