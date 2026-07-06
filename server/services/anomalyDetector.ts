@@ -14,6 +14,8 @@ export interface AnomalyCandidate {
   context: Record<string, unknown>
 }
 
+type Detector = (txs: TxSnapshot[]) => AnomalyCandidate[]
+
 // ─── Helper: group transactions by category ───────────────────────────────────
 
 function groupByCategory(txs: TxSnapshot[]): Map<string, TxSnapshot[]> {
@@ -215,6 +217,14 @@ function detectRecurringChanges(txs: TxSnapshot[]): AnomalyCandidate[] {
   return candidates
 }
 
+const DETECTORS: Detector[] = [
+  detectAmountOutliers,
+  detectNewMerchants,
+  detectRoundNumbers,
+  detectSpendingSpikes,
+  detectRecurringChanges,
+]
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -222,13 +232,7 @@ function detectRecurringChanges(txs: TxSnapshot[]): AnomalyCandidate[] {
  * Returns candidates sorted by score descending (highest priority first).
  */
 export function detectAnomalies(txs: TxSnapshot[]): AnomalyCandidate[] {
-  const all = [
-    ...detectAmountOutliers(txs),
-    ...detectNewMerchants(txs),
-    ...detectRoundNumbers(txs),
-    ...detectSpendingSpikes(txs),
-    ...detectRecurringChanges(txs),
-  ]
+  const all = DETECTORS.flatMap((detector) => detector(txs))
 
   // Deduplicate by transactionId — keep highest score per transaction
   const byId = new Map<string, AnomalyCandidate>()

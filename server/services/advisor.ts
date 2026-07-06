@@ -11,7 +11,7 @@ import { MemorySaver } from '@langchain/langgraph'
 import { tool } from '@langchain/core/tools'
 import { SystemMessage } from '@langchain/core/messages'
 import { z } from 'zod'
-import { createLLMClient } from './llm.js'
+import { createLLMClient, type LLMClient } from './llm.js'
 import { getTransactions,
   getByMonth,
   getByYear,
@@ -260,8 +260,10 @@ IMPORTANT — time period handling:
 
 let _advisor: ReturnType<typeof createReactAgent> | null = null
 
-export function getAdvisor(stateStore: StateStore): ReturnType<typeof createReactAgent> | null {
-  const llm = createLLMClient()
+export function getAdvisor(
+  stateStore: StateStore,
+  llm: LLMClient | null = createLLMClient(),
+): ReturnType<typeof createReactAgent> | null {
   if (!llm) return null
 
   // Lazy singleton — recreate if LLM config changes would require it

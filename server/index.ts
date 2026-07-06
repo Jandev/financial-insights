@@ -43,7 +43,6 @@ import { mkdir, readdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import basicAuth from './middleware/basicAuth.js'
 import { llmRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
 import { loadFromDisk } from './services/transactionStore.js'
@@ -94,7 +93,6 @@ const app = express()
 app.use(cors())
 app.use('/api/llm/transactions/sync', express.json({ limit: '10mb' }))
 app.use(express.json())
-app.use(basicAuth)
 
 // ── API routes ────────────────────────────────────────────────────────────────
 
