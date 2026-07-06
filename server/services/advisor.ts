@@ -204,7 +204,9 @@ const searchFinancialKnowledgeTool = tool(
       'Search grounding documents for financial norms, budget guidelines, savings benchmarks, ' +
       'tax thresholds, or any general financial advice. Use when the user asks for guidance, ' +
       'targets, or context not derivable from their own transaction data. ' +
-      'Do NOT call this for data-only questions like top merchants or monthly totals.',
+      'Do NOT call this for data-only questions like top merchants or monthly totals. ' +
+      'The tool returns a JSON object: { results: [{ snippet, sourceName, link? }] }. ' +
+      'Use the snippet content in your answer. Always cite your sources in the response.',
     schema: z.object({
       query: z.string().describe('Natural language search query'),
     }),
@@ -237,6 +239,15 @@ Raw IBANs and personal data are not available to you for privacy reasons.
 
 Available data periods: ${monthsList}${latest ? `\nMost recent month: ${latest}` : ''}
 ${kbNote}
+
+IMPORTANT — citations when using the knowledge base:
+- When you use searchFinancialKnowledge, you MUST cite the sources in your answer.
+- Add a brief inline citation after the relevant sentence: [SourceName]
+- At the end of your answer add a "Sources" section listing each source used:
+    Sources:
+    - [SourceName](https://url) — or just "SourceName" when no URL is available
+- Never invent or guess sources. Only cite what the tool actually returned.
+- Do not cite the knowledge base if you did not call the tool.
 
 IMPORTANT — time period handling:
 - When the user asks a question that does not specify a time period (e.g. "where am I spending the most?", "what are my biggest expenses?"), you MUST ask which period they want before calling any tool.

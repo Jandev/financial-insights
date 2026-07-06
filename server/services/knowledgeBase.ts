@@ -354,35 +354,50 @@ function resolvePolicy(policy?: CrawlPolicy): Required<CrawlPolicy> {
 
 // ─── In-memory vector store ───────────────────────────────────────────────────
 
+interface ChunkMeta {
+  /** Human-readable source name (e.g. "Nibud") */
+  sourceName: string
+  /** URL of the specific page this chunk came from (web sources) */
+  pageUrl?: string
+  /** Filename for local .md/.txt files */
+  localFile?: string
+}
+
 interface VectorEntry {
   text: string
   vector: number[]
+  meta: ChunkMeta
 }
 
 class InMemoryVectorStore {
   private entries: VectorEntry[] = []
 
-  async addTexts(texts: string[], embeddings: EmbeddingsInterface): Promise<void> {
+  async addTexts(texts: string[], metas: ChunkMeta[], embeddings: EmbeddingsInterface): Promise<void> {
     // Embed in batches of 100 to avoid API limits
     const BATCH = 100
     for (let i = 0; i < texts.length; i += BATCH) {
       const batch = texts.slice(i, i + BATCH)
       const vectors = await embeddings.embedDocuments(batch)
       for (let j = 0; j < batch.length; j++) {
-        this.entries.push({ text: batch[j], vector: vectors[j] })
+        this.entries.push({ text: batch[j], vector: vectors[j], meta: metas[i + j] })
       }
     }
   }
 
-  async similaritySearch(query: string, embeddings: EmbeddingsInterface, k: number): Promise<string[]> {
+  async similaritySearch(
+    query: string,
+    embeddings: EmbeddingsInterface,
+    k: number,
+  ): Promise<Array<{ text: string; meta: ChunkMeta }>> {
     if (this.entries.length === 0) return []
     const queryVec = await embeddings.embedQuery(query)
     const scored = this.entries.map((e) => ({
       text: e.text,
+      meta: e.meta,
       score: cosineSimilarity(queryVec, e.vector),
     }))
     scored.sort((a, b) => b.score - a.score)
-    return scored.slice(0, k).map((s) => s.text)
+    return scored.slice(0, k).map(({ text, meta }) => ({ text, meta }))
   }
 
   get size(): number {
@@ -526,6 +541,7 @@ async function loadLocalFiles(localPath: string): Promise<Array<{ content: strin
 async function processSource(
   source: KnowledgeSource,
   allTexts: string[],
+  allMetas: ChunkMeta[],
   indexed: string[],
   failedSources: Array<{ name: string; url: string; reason: string }>,
   failedPages: FailedPage[],
@@ -534,14 +550,16 @@ async function processSource(
   const mode = source.mode ?? 'single_page'
 
   if (mode === 'single_page') {
-    // ── Single page ──────────────────────────────────────────────────────────
     const result = await fetchPageContent(source.url)
     if ('error' in result) {
       failedSources.push({ name: source.name, url: source.url, reason: result.error })
       return
     }
     const chunks = splitText(result.content)
-    allTexts.push(...chunks)
+    for (const chunk of chunks) {
+      allTexts.push(chunk)
+      allMetas.push({ sourceName: source.name, pageUrl: source.url })
+    }
     indexed.push(source.name)
     stats.discovered += 1
     stats.eligible += 1
@@ -604,7 +622,10 @@ async function processSource(
         return
       }
       const chunks = splitText(result.content)
-      allTexts.push(...chunks)
+      for (const chunk of chunks) {
+        allTexts.push(chunk)
+        allMetas.push({ sourceName: source.name, pageUrl })
+      }
       sourceIndexed++
       stats.indexedPages++
     }))
@@ -634,6 +655,7 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
   robotsCache.clear()
 
   const allTexts: string[] = []
+  const allMetas: ChunkMeta[] = []
   const indexed: string[] = []
   const failedSources: Array<{ name: string; url: string; reason: string }> = []
   const failedPages: FailedPage[] = []
@@ -643,7 +665,7 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
 
   for (const source of sources) {
     console.log(`[knowledgeBase] Processing source "${source.name}" (mode: ${source.mode ?? 'single_page'})`)
-    await processSource(source, allTexts, indexed, failedSources, failedPages, stats)
+    await processSource(source, allTexts, allMetas, indexed, failedSources, failedPages, stats)
   }
 
   // ── Load local files ───────────────────────────────────────────────────────
@@ -651,7 +673,10 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
   const localFiles = await loadLocalFiles(localPath)
   for (const { content, name } of localFiles) {
     const chunks = splitText(content)
-    allTexts.push(...chunks)
+    for (const chunk of chunks) {
+      allTexts.push(chunk)
+      allMetas.push({ sourceName: name, localFile: name })
+    }
     indexed.push(name)
     stats.indexedPages++
   }
@@ -675,7 +700,7 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
 
   try {
     const store = new InMemoryVectorStore()
-    await store.addTexts(allTexts, embeddings)
+    await store.addTexts(allTexts, allMetas, embeddings)
     _store = store
     _embeddings = embeddings
     _chunkCount = allTexts.length
@@ -730,17 +755,52 @@ export function rebuildKnowledgeBase(options: InitKnowledgeBaseOptions): void {
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
+export interface KnowledgeResult {
+  snippet: string
+  sourceName: string
+  link?: string
+}
+
+/**
+ * Semantic search over the knowledge base.
+ * Returns a JSON string with results including source metadata so the
+ * advisor agent can construct inline citations and a Sources list.
+ */
 export async function searchKnowledge(query: string, k = 4): Promise<string> {
   if (!_store || !_embeddings || _status === 'building' || _status === 'not_configured') {
-    return 'No knowledge base configured.'
+    return JSON.stringify({ results: [], message: 'No knowledge base configured.' })
   }
   try {
-    const results = await _store.similaritySearch(query, _embeddings, k)
-    if (results.length === 0) return 'No relevant knowledge found.'
-    return results.join('\n\n---\n\n')
+    const hits = await _store.similaritySearch(query, _embeddings, k)
+    if (hits.length === 0) {
+      return JSON.stringify({ results: [], message: 'No relevant knowledge found.' })
+    }
+
+    // Deduplicate by source (keep best-ranked snippet per source+page combo)
+    const seen = new Set<string>()
+    const results: KnowledgeResult[] = []
+    for (const { text, meta } of hits) {
+      const key = meta.pageUrl ?? meta.localFile ?? meta.sourceName
+      if (!seen.has(key)) {
+        seen.add(key)
+        results.push({
+          snippet: text,
+          sourceName: meta.sourceName,
+          ...(meta.pageUrl ? { link: meta.pageUrl } : {}),
+        })
+      } else {
+        // Same page — append extra context to existing result
+        const existing = results.find((r) =>
+          (r.link ?? r.sourceName) === (meta.pageUrl ?? meta.sourceName),
+        )
+        if (existing) existing.snippet += `\n\n${text}`
+      }
+    }
+
+    return JSON.stringify({ results })
   } catch (err) {
     console.error('[knowledgeBase] Search failed:', err)
-    return 'Knowledge base search failed.'
+    return JSON.stringify({ results: [], message: 'Knowledge base search failed.' })
   }
 }
 
