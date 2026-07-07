@@ -119,7 +119,7 @@ export class StateStore {
   async reset(): Promise<string[]> {
     const deleted: string[] = []
 
-    const topKeys = ['categories', 'exclusions', 'rules', 'anomalies', 'dismissed', 'default-name-overrides', 'spaarpotjes', 'tag-overrides', 'personal-accounts']
+    const topKeys = ['categories', 'exclusions', 'rules', 'anomalies', 'dismissed', 'default-name-overrides', 'spaarpotjes', 'tag-overrides', 'personal-accounts', 'knowledge-vectors']
     for (const key of topKeys) {
       const fp = this.filePath(key)
       try {
