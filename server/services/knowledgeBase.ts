@@ -30,6 +30,7 @@ import { lookup as dnsLookup } from 'node:dns/promises'
 import path from 'node:path'
 import { OpenAIEmbeddings, AzureOpenAIEmbeddings } from '@langchain/openai'
 import type { EmbeddingsInterface } from '@langchain/core/embeddings'
+import type { StateStore } from './stateStore.js'
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export interface KnowledgeResult {
 export interface InitKnowledgeBaseOptions {
   sources: KnowledgeSource[]
   localPath: string
+  stateStore?: StateStore
 }
 
 // ─── Glob → RegExp ────────────────────────────────────────────────────────────
@@ -441,6 +443,16 @@ class InMemoryVectorStore {
   }
 
   get size(): number { return this.entries.length }
+
+  /** Return a copy of all entries for persistence. */
+  getEntries(): VectorEntry[] {
+    return [...this.entries]
+  }
+
+  /** Replace all entries from a persisted snapshot. */
+  restoreEntries(entries: VectorEntry[]): void {
+    this.entries = [...entries]
+  }
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -557,6 +569,7 @@ async function loadLocalFiles(localPath: string): Promise<Array<{ content: strin
 
 let _store: InMemoryVectorStore = new InMemoryVectorStore()
 let _embeddings: EmbeddingsInterface | null = null
+let _stateStore: StateStore | null = null
 let _status: KnowledgeStatus = 'not_configured'
 let _chunkCount = 0
 /** Canonical source names (url → name) for sources that are currently indexed. */
@@ -591,6 +604,110 @@ function setSourceProgress(sourceId: string, patch: Partial<SourceProgress>): vo
     processed: 0, chunks: 0, phase: 'idle', updatedAt: nowIso(),
   }
   _sourceProgress.set(sourceId, { ...existing, ...patch, updatedAt: nowIso() })
+}
+
+// ─── Vector cache persistence ─────────────────────────────────────────────────
+
+export const VECTOR_CACHE_KEY = 'knowledge-vectors'
+
+interface PersistedVectorCache {
+  modelKey: string
+  entries: VectorEntry[]
+  indexedSourceMap: Array<[string, string]>
+  sourcePageCount: Array<[string, number]>
+  failedSources: Array<{ name: string; url: string; reason: string }>
+  discoveredCount: number
+  eligibleCount: number
+  indexedPageCount: number
+  failedPages: FailedPage[]
+}
+
+/** Derive a cache-invalidation key from the current embedding config. */
+function getModelKey(): string {
+  if (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) {
+    const deployment = process.env.AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT ?? 'text-embedding-3-small'
+    return `azure:${deployment}`
+  }
+  if (process.env.OPENAI_API_KEY) {
+    const model = process.env.OPENAI_EMBEDDINGS_MODEL ?? 'text-embedding-3-small'
+    return `openai:${model}`
+  }
+  return 'unknown'
+}
+
+/** Persist the current in-memory vector store to the state store. */
+async function saveVectorCache(): Promise<void> {
+  if (!_stateStore) return
+  try {
+    const cache: PersistedVectorCache = {
+      modelKey: getModelKey(),
+      entries: _store.getEntries(),
+      indexedSourceMap: [..._indexedSourceMap.entries()],
+      sourcePageCount: [..._sourcePageCount.entries()],
+      failedSources: _failedSources,
+      discoveredCount: _discoveredCount,
+      eligibleCount: _eligibleCount,
+      indexedPageCount: _indexedPageCount,
+      failedPages: _failedPages,
+    }
+    await _stateStore.write(VECTOR_CACHE_KEY, cache)
+    console.log(`[knowledgeBase] Vector cache saved (${cache.entries.length} entries)`)
+  } catch (err) {
+    console.error('[knowledgeBase] Failed to save vector cache:', err)
+  }
+}
+
+/**
+ * Try to restore vectors from the state store.
+ * Returns true if cache was valid and state was restored; false otherwise.
+ */
+async function tryLoadVectorCache(
+  embeddings: EmbeddingsInterface,
+): Promise<boolean> {
+  if (!_stateStore) return false
+  try {
+    const cache = await _stateStore.read<PersistedVectorCache>(VECTOR_CACHE_KEY)
+    if (!cache) return false
+
+    const currentModelKey = getModelKey()
+    if (cache.modelKey !== currentModelKey) {
+      console.log(
+        `[knowledgeBase] Vector cache model mismatch (stored: ${cache.modelKey}, current: ${currentModelKey}) — rebuilding`,
+      )
+      return false
+    }
+
+    if (!Array.isArray(cache.entries) || cache.entries.length === 0) {
+      console.log('[knowledgeBase] Vector cache is empty or invalid — rebuilding')
+      return false
+    }
+
+    const store = new InMemoryVectorStore()
+    store.restoreEntries(cache.entries)
+
+    _store = store
+    _embeddings = embeddings
+    _chunkCount = cache.entries.length
+    _indexedSourceMap.clear()
+    for (const [k, v] of cache.indexedSourceMap) _indexedSourceMap.set(k, v)
+    _sourcePageCount.clear()
+    for (const [k, v] of cache.sourcePageCount) _sourcePageCount.set(k, v)
+    _failedSources = cache.failedSources ?? []
+    _discoveredCount = cache.discoveredCount ?? 0
+    _eligibleCount = cache.eligibleCount ?? 0
+    _indexedPageCount = cache.indexedPageCount ?? 0
+    _failedPages = cache.failedPages ?? []
+    _status = 'ready'
+    _phase = 'idle'
+
+    console.log(
+      `[knowledgeBase] Restored ${_chunkCount} chunks from cache (${_indexedSourceMap.size} sources)`,
+    )
+    return true
+  } catch (err) {
+    console.error('[knowledgeBase] Failed to load vector cache — rebuilding:', err)
+    return false
+  }
 }
 
 // ─── Queue ────────────────────────────────────────────────────────────────────
@@ -846,6 +963,7 @@ async function runSourceResync(source: KnowledgeSource): Promise<void> {
       processed: result.processed, chunks: result.texts.length,
     })
     console.log(`[knowledgeBase] Resync complete: "${source.name}" — ${result.texts.length} chunks (${result.processed} pages, ${result.failedPagesLocal.length} page failures)`)
+    await saveVectorCache()
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     setSourceProgress(source.url, { status: 'error', phase: 'error', error: msg })
@@ -857,21 +975,12 @@ async function runSourceResync(source: KnowledgeSource): Promise<void> {
 
 // ─── Full rebuild ─────────────────────────────────────────────────────────────
 
-export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Promise<void> {
+/**
+ * Internal implementation: fetch, chunk, embed all sources and local files.
+ * Does NOT check or write the vector cache — callers are responsible.
+ */
+async function runFullBuild(options: InitKnowledgeBaseOptions, embeddings: EmbeddingsInterface): Promise<void> {
   const { sources, localPath } = options
-
-  const embeddings = createEmbeddings()
-  if (!embeddings) {
-    console.log('[knowledgeBase] No LLM credentials configured — skipping knowledge base init')
-    _status = 'not_configured'
-    _embeddings = null
-    return
-  }
-  _embeddings = embeddings
-
-  // Mark as building immediately so status endpoint shows progress during startup init
-  _status = 'building'
-  _phase = 'starting'
 
   robotsCache.clear()
   _sourceProgress.clear()
@@ -989,6 +1098,8 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
       (failedSources.length + failedPages.length > 0
         ? ` (${failedSources.length} source failures, ${failedPages.length} page failures)` : ''),
     )
+
+    await saveVectorCache()
   } catch (err) {
     console.error('[knowledgeBase] Failed to build vector store:', err)
     _store = new InMemoryVectorStore()
@@ -1004,6 +1115,39 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
     _status = 'error'
     _phase = 'idle'
   }
+}
+
+/**
+ * Cache-first startup: try to restore from persisted vectors, fall back to a
+ * full rebuild if the cache is missing, corrupt, or the model has changed.
+ */
+export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Promise<void> {
+  const { stateStore } = options
+
+  // Store the stateStore reference for later use by resync/save
+  if (stateStore) _stateStore = stateStore
+
+  const embeddings = createEmbeddings()
+  if (!embeddings) {
+    console.log('[knowledgeBase] No LLM credentials configured — skipping knowledge base init')
+    _status = 'not_configured'
+    _embeddings = null
+    return
+  }
+  _embeddings = embeddings
+
+  // Mark as building immediately so status endpoint shows progress during startup init
+  _status = 'building'
+  _phase = 'starting'
+
+  // Try cache-first restore
+  if (_stateStore) {
+    _phase = 'restoring cache'
+    const restored = await tryLoadVectorCache(embeddings)
+    if (restored) return
+  }
+
+  await runFullBuild(options, embeddings)
 }
 
 export function rebuildKnowledgeBase(options: InitKnowledgeBaseOptions): void {
@@ -1044,7 +1188,20 @@ function startRebuild(options: InitKnowledgeBaseOptions): void {
   _rebuildRunning = true
   _sourceProgress.clear()
 
-  void initKnowledgeBase(options)
+  // Keep _stateStore up to date if passed
+  if (options.stateStore) _stateStore = options.stateStore
+
+  const embeddings = createEmbeddings()
+  if (!embeddings) {
+    console.log('[knowledgeBase] No LLM credentials configured — skipping rebuild')
+    _status = 'not_configured'
+    _phase = 'idle'
+    _rebuildRunning = false
+    return
+  }
+  _embeddings = embeddings
+
+  void runFullBuild(options, embeddings)
     .catch((err) => {
       console.error('[knowledgeBase] Rebuild failed:', err)
       _status = 'error'; _phase = 'idle'

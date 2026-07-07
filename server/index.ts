@@ -214,6 +214,7 @@ void ensureStateDirs().then(async () => {
   void initKnowledgeBase({
     sources: savedKnowledge?.sources ?? [],
     localPath: KNOWLEDGE_BASE_PATH,
+    stateStore,
   })
 })
 
