@@ -103,7 +103,7 @@ export function useStateSync(): void {
           lastSeenRef.current[key] = entry.lastUpdated
 
           // Fetch and apply the changed key
-          await applyKey(key, needsRecategorize)
+          await applyKey(key)
           if (CATEGORIZATION_KEYS.has(key)) needsRecategorize = true
         }
       } catch {
@@ -113,7 +113,7 @@ export function useStateSync(): void {
       if (needsRecategorize && !cancelled) recategorize()
     }
 
-    async function applyKey(key: string, _currentlyNeedsRecategorize: boolean): Promise<void> {
+    async function applyKey(key: string): Promise<void> {
       try {
         const r = await fetch(`/api/state/${key}`)
         if (!r.ok) return
