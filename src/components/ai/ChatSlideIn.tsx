@@ -26,7 +26,7 @@ export function ChatSlideIn() {
         onClick={() => setOpen((o) => !o)}
         title="AI Advisor"
         className={cn(
-          'fixed bottom-6 right-6 z-50',
+          'fixed bottom-20 sm:bottom-6 right-6 z-50',
           'h-12 w-12 rounded-full shadow-lg',
           'flex items-center justify-center',
           'bg-accent text-white',
@@ -43,13 +43,14 @@ export function ChatSlideIn() {
       {/* Slide-in panel */}
       <div
         className={cn(
-          'fixed bottom-0 right-0 z-40',
-          'w-[380px] h-[600px] max-h-[80dvh]',
+          'fixed bottom-16 sm:bottom-0 right-0 z-40',
+          'w-full sm:w-[380px] h-[600px] max-h-[80dvh]',
           'glass-card rounded-tl-2xl rounded-bl-none rounded-br-none rounded-tr-none',
           'border-l border-t border-border',
           'flex flex-col shadow-2xl',
           'transition-transform duration-300 ease-in-out',
-          open ? 'translate-y-0' : 'translate-y-full',
+          // On mobile, offset by mobile nav height (4rem = 64px = h-16 MobileNav) to fully hide below fold
+          open ? 'translate-y-0' : 'translate-y-[calc(100%+4rem)] sm:translate-y-full',
         )}
       >
         {/* Panel header */}

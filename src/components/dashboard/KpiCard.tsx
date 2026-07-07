@@ -34,13 +34,13 @@ export function KpiCard({ title, value, subLabel, trend, positiveIsGood = true }
   const TrendIcon = trendNeutral ? Minus : trendUp ? TrendingUp : TrendingDown
 
   return (
-    <Card padding="md" className="flex flex-col gap-1">
-      <div className="flex items-start justify-between">
-        <span className="text-xs text-text-secondary">{title}</span>
+    <Card padding="md" className="flex flex-col gap-1 min-w-0">
+      <div className="flex items-start justify-between gap-1">
+        <span className="text-xs text-text-secondary truncate">{title}</span>
         {trend && !trendNeutral && (
           <TrendIcon
             className={cn(
-              'h-4 w-4',
+              'h-4 w-4 shrink-0',
               trendGood === true  && 'text-income',
               trendGood === false && 'text-expense',
               trendGood === null  && 'text-text-muted',
@@ -49,8 +49,8 @@ export function KpiCard({ title, value, subLabel, trend, positiveIsGood = true }
           />
         )}
       </div>
-      <p className="text-2xl font-bold tracking-tight text-text-primary">{value}</p>
-      <p className="text-xs text-text-muted">
+      <p className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight text-text-primary truncate">{value}</p>
+      <p className="text-xs text-text-muted truncate">
         {trend ? (
           <>
             <span

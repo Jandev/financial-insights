@@ -181,7 +181,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
         {!isLoading && <RangeSelector value={range} onChange={setRange} />}
       </div>
@@ -218,7 +218,7 @@ export function DashboardPage() {
           />
         )}
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {isLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} padding="md">
@@ -291,7 +291,7 @@ export function DashboardPage() {
       {!isLoading && <SpaarpotjesWidget />}
 
       {/* Main row: bar chart (range) + top expenses (month) */}
-      <div className="grid grid-cols-[1fr_280px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
         <Card padding="lg">
           {isLoading ? (
             <div className="space-y-3">
