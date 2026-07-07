@@ -78,6 +78,7 @@ export function MonthlyBarChart({ data }: Props) {
           axisLine={false}
           tickLine={false}
           dy={6}
+          interval="preserveStartEnd"
           style={{ textTransform: 'capitalize' }}
         />
         <YAxis

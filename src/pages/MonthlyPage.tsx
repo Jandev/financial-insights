@@ -407,7 +407,7 @@ export function MonthlyPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold text-text-primary">Monthly Overview</h1>
         {!isLoading && availableMonths.length > 0 && (
           <MonthNavigator
@@ -420,7 +420,7 @@ export function MonthlyPage() {
       </div>
 
       {/* ── KPI cards ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} padding="md">
@@ -484,7 +484,7 @@ export function MonthlyPage() {
       </div>
 
       {/* ── Category section + Month at a Glance ────────────────────────────── */}
-      <div className="grid grid-cols-[1fr_260px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
         {/* Main card: two donuts + two bar lists */}
         <Card padding="lg">
           {isLoading ? (
@@ -506,7 +506,7 @@ export function MonthlyPage() {
             </div>
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-text-primary">
                   Spending by Category
                 </h2>
@@ -518,7 +518,7 @@ export function MonthlyPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* ── Income column ── */}
                 <div className="space-y-3">
                   <p className="text-xs font-medium text-text-secondary">Income</p>

@@ -27,14 +27,9 @@ export function SpaarpotjesWidget() {
       </div>
 
       {/* One card per pot */}
-      <div
-        className="grid gap-4"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(accounts.length, 4)}, minmax(0, 1fr))`,
-        }}
-      >
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {balances.map(({ account, balance, depositCount, withdrawalCount }) => (
-          <Card key={account.id} padding="md" className="flex flex-col gap-1">
+          <Card key={account.id} padding="md" className="flex flex-col gap-1 min-w-0">
             {/* Title row with color dot */}
             <div className="flex items-center gap-1.5">
               <span
@@ -46,14 +41,14 @@ export function SpaarpotjesWidget() {
 
             {/* Balance */}
             <p
-              className="text-2xl font-bold tracking-tight"
+              className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight truncate"
               style={{ color: balance >= 0 ? account.color : 'var(--color-expense)' }}
             >
               {formatCurrency(balance)}
             </p>
 
             {/* Sub-label: transaction counts */}
-            <p className="text-xs text-text-muted">
+            <p className="text-xs text-text-muted truncate">
               {depositCount} {depositCount === 1 ? 'deposit' : 'deposits'}
               {withdrawalCount > 0 && (
                 <>, {withdrawalCount} {withdrawalCount === 1 ? 'opname' : 'opnames'}</>

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { WindowChrome } from './WindowChrome'
 import { Sidebar } from './Sidebar'
+import { MobileNav } from './MobileNav'
 import { useTransactionLoader } from '@/hooks/useTransactionLoader'
 import { useTransactionSync } from '@/hooks/useTransactionSync'
 
@@ -21,10 +22,11 @@ export function Layout() {
     <div className="min-h-dvh bg-bg-base">
       <WindowChrome />
       <Sidebar />
+      <MobileNav />
 
-      {/* Main content area — offset by chrome height (48px) and sidebar width (220px) */}
-      <main className="ml-[220px] pt-12 min-h-dvh">
-        <div className="min-h-full bg-bg-base p-6">
+      {/* Main content area — offset by chrome height (48px) and sidebar width (220px on sm+) */}
+      <main className="sm:ml-[220px] pt-12 min-h-dvh pb-16 sm:pb-0">
+        <div className="min-h-full bg-bg-base p-4 sm:p-6">
           <Outlet />
         </div>
       </main>

@@ -40,7 +40,7 @@ export function Sidebar() {
   const { fileLog, serverStateAvailable } = useStore()
 
   return (
-    <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 flex w-[220px] flex-col">
+    <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 hidden sm:flex w-[220px] flex-col">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2 px-5">
         <Activity className="h-5 w-5 text-accent" strokeWidth={2} />

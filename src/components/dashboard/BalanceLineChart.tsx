@@ -52,7 +52,7 @@ export function BalanceLineChart({ data, startLabel, endLabel }: Props) {
   return (
     <div>
       {/* Range summary row */}
-      <div className="mb-3 flex items-center justify-end gap-2 text-xs text-text-muted">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
         <span>{startLabel}</span>
         <span className="text-text-muted/50">→</span>
         <span className="font-semibold text-accent">{endLabel}</span>
