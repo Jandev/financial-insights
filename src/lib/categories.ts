@@ -117,7 +117,7 @@ export const INTERNAL_TRANSFER_RULE_IDS = new Set(['internal-transfer', 'own-acc
  * Returns true if `tx` should be counted as income.
  * Spaarpotje withdrawals (money returning from savings) are excluded.
  */
-export function isIncomeTransaction(tx: Transaction): boolean {
+export function isIncomeTransaction(tx: Pick<Transaction, 'amount' | 'category'>): boolean {
   return tx.amount > 0 && !SPAARPOTJE_CATEGORIES.has(tx.category)
 }
 
@@ -125,7 +125,7 @@ export function isIncomeTransaction(tx: Transaction): boolean {
  * Returns true if `tx` should be counted as an expense.
  * Spaarpotje deposits (money sent to savings) are excluded.
  */
-export function isExpenseTransaction(tx: Transaction): boolean {
+export function isExpenseTransaction(tx: Pick<Transaction, 'amount' | 'category'>): boolean {
   return tx.amount < 0 && !SPAARPOTJE_CATEGORIES.has(tx.category)
 }
 

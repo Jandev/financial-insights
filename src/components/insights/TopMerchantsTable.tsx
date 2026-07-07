@@ -7,6 +7,10 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
+// ─── Narrow prop type ─────────────────────────────────────────────────────────
+
+type TxMerchant = Pick<Transaction, 'amount' | 'counterpartyName' | 'category'>
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MerchantRow {
@@ -24,13 +28,13 @@ type SortCol = 'rank' | 'total' | 'count' | 'avg'
 type SortDir = 'asc' | 'desc'
 
 interface Props {
-  transactions: Transaction[]
+  transactions: TxMerchant[]
 }
 
 // ─── Aggregation ─────────────────────────────────────────────────────────────
 
 function computeMerchants(
-  transactions: Transaction[],
+  transactions: TxMerchant[],
   categoryMetaById: Map<string, { name: string; color: string }>,
 ): MerchantRow[] {
   const map = new Map<

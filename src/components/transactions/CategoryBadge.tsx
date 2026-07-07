@@ -9,8 +9,11 @@ import { useStore } from '@/store'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
+/** Minimal transaction fields required by the picker and badge components. */
+export type TxCategorizable = Pick<Transaction, 'id' | 'category' | 'counterpartyName'>
+
 interface CategoryPickerDropdownProps {
-  tx: Transaction
+  tx: TxCategorizable
   onClose: () => void
 }
 
@@ -234,7 +237,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
 // ─── CategoryBadge (exported, used in table rows) ─────────────────────────────
 
 interface CategoryBadgeProps {
-  tx: Transaction
+  tx: TxCategorizable
   /** Overrides map from the parent table — used to show the override indicator. */
   overrides: Record<string, string>
 }
