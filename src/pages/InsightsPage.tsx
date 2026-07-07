@@ -1,6 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useShallow } from 'zustand/react/shallow'
-import { useStore } from '@/store'
 import { Card } from '@/components/ui/Card'
 import { RangeSelector, type DateRange } from '@/components/ui/RangeSelector'
 import { TopMerchantsTable } from '@/components/insights/TopMerchantsTable'
@@ -8,30 +6,16 @@ import { BiggestTransactions } from '@/components/insights/BiggestTransactions'
 import { MonthlySpendTrendChart } from '@/components/insights/MonthlySpendTrendChart'
 import { IncomeSavingsChart } from '@/components/insights/IncomeSavingsChart'
 import { AnomalyAlerts } from '@/components/ai/AnomalyAlerts'
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function computeDateFrom(range: DateRange): Date | null {
-  if (range === 'all') return null
-  const months = range === '3m' ? 3 : range === '6m' ? 6 : 12
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth() - months, d.getDate())
-}
+import { computeDateFrom } from '@/lib/utils'
+import { useNonExcludedTransactions } from '@/store/selectors'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function InsightsPage() {
   const [range, setRange] = useState<DateRange>('12m')
 
-  const { transactions, excludedIds } = useStore(
-    useShallow((s) => ({ transactions: s.transactions, excludedIds: s.excludedIds })),
-  )
-
   // All non-excluded transactions — mirrors DashboardPage pattern (ignores store filters)
-  const allActive = useMemo(
-    () => transactions.filter((tx) => !excludedIds.has(tx.id)),
-    [transactions, excludedIds],
-  )
+  const allActive = useNonExcludedTransactions()
 
   // Page-local date window
   const dateFrom = useMemo(() => computeDateFrom(range), [range])

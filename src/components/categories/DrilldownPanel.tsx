@@ -8,13 +8,17 @@ import { ExpandableTransactionText } from '@/components/transactions/ExpandableT
 import { useStore } from '@/store'
 import type { Transaction } from '@/types/transaction'
 
+// ─── Narrow prop type ─────────────────────────────────────────────────────────
+
+type TxDrilldown = Pick<Transaction, 'id' | 'date' | 'counterpartyName' | 'description' | 'amount' | 'category'>
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface DrilldownPanelProps {
   categoryIds: string[]
   name: string
   color: string
-  transactions: Transaction[]
+  transactions: TxDrilldown[]
   onClose: () => void
 }
 
@@ -133,7 +137,7 @@ export function DrilldownPanel({
 
 // ─── Quick-assign button (uncategorized transactions) ─────────────────────────
 
-function QuickAssignButton({ tx }: { tx: Transaction }) {
+function QuickAssignButton({ tx }: { tx: TxDrilldown }) {
   return (
     <RadixPopover.Root>
       <RadixPopover.Trigger asChild>

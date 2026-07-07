@@ -1,21 +1,13 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   STORAGE_KEY_OVERRIDES,
   readOverridesFromStorage,
   type CategoryOverrides,
 } from '@/lib/categories'
 import { debouncePut } from '@/lib/serverState'
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function persistLocal(overrides: CategoryOverrides): void {
-  localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(overrides))
-}
-
-function persistAll(overrides: CategoryOverrides): void {
-  persistLocal(overrides)
-  debouncePut('categories', overrides)
-}
+import { createPersistFns } from '@/lib/persistence'
+import { useStorageHydration } from '@/hooks/useStorageHydration'
+import { useStore } from '@/store'
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -63,18 +55,26 @@ export interface UseCategoryOverridesResult {
  *              "All from [counterparty]" → useCategoryRules().addRule(...)
  */
 export function useCategoryOverrides(): UseCategoryOverridesResult {
+  const setCategoryOverridesState = useStore((s) => s.setCategoryOverridesState)
+
+  const { persistAll } = useMemo(
+    () => createPersistFns<CategoryOverrides>(STORAGE_KEY_OVERRIDES, 'categories'),
+    [],
+  )
+
   const [overrides, setOverrides] = useState<CategoryOverrides>(() =>
     readOverridesFromStorage(),
   )
 
-  // Re-read from localStorage when server hydration writes fresh data
   useEffect(() => {
-    const handler = () => {
-      setOverrides(readOverridesFromStorage())
-    }
-    window.addEventListener('state-hydrated', handler)
-    return () => window.removeEventListener('state-hydrated', handler)
-  }, [])
+    setCategoryOverridesState(overrides)
+  }, [overrides, setCategoryOverridesState])
+
+  // Re-read from localStorage when server hydration writes fresh data
+  useStorageHydration(readOverridesFromStorage, (next) => {
+    setOverrides(next)
+    setCategoryOverridesState(next)
+  })
 
   const setOverride = useCallback((txId: string, categoryId: string) => {
     // Compute and persist synchronously so recategorize() reads fresh data
@@ -84,7 +84,8 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
     const updated = { ...readOverridesFromStorage(), [txId]: categoryId }
     persistAll(updated)
     setOverrides(updated)
-  }, [])
+    setCategoryOverridesState(updated)
+  }, [persistAll, setCategoryOverridesState])
 
   const removeOverride = useCallback((txId: string) => {
     const current = readOverridesFromStorage()
@@ -93,13 +94,15 @@ export function useCategoryOverrides(): UseCategoryOverridesResult {
     delete updated[txId]
     persistAll(updated)
     setOverrides(updated)
-  }, [])
+    setCategoryOverridesState(updated)
+  }, [persistAll, setCategoryOverridesState])
 
   const clearAll = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY_OVERRIDES)
     debouncePut('categories', {})
     setOverrides({})
-  }, [])
+    setCategoryOverridesState({})
+  }, [setCategoryOverridesState])
 
   return { overrides, setOverride, removeOverride, clearAll }
 }

@@ -13,7 +13,8 @@ import { LLMGate } from './LLMGate'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import type { AnomalyFinding, Severity } from '@/store/slices/llmSlice'
+import type { AnomalyFinding, Severity } from '@/store/slices/llmTypes'
+import { readSSEStream } from '@/lib/sse'
 
 const SEVERITY_CONFIG: Record<Severity, { label: string; color: string; Icon: typeof Info }> = {
   info:    { label: 'Info',    color: 'text-blue-500',   Icon: Info          },
@@ -92,43 +93,40 @@ export function AnomalyAlerts({ limit = 5 }: AnomalyAlertsProps) {
     setStage('Detecting anomalies…')
 
     try {
-      const res = await fetch('/api/llm/analyze', { method: 'POST' })
-      if (!res.ok || !res.body) throw new Error('Failed to start analysis')
+      await readSSEStream<{
+        type: string
+        candidates?: number
+        processed?: number
+        total?: number
+        findings?: AnomalyFinding[]
+        message?: string
+      }>(
+        '/api/llm/analyze',
+        { method: 'POST' },
+        {
+          onData: (data) => {
+            if (data.type === 'stage1_done') {
+              setStage(`Analyzing ${data.candidates} candidates with AI…`)
+              return
+            }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+            if (data.type === 'stage2_progress') {
+              setStage(`Explaining ${data.processed}/${data.total} findings…`)
+              return
+            }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+            if (data.type === 'done') {
+              setFindings(data.findings ?? [])
+              toast.success(`Found ${data.findings?.length ?? 0} anomalies`)
+              return
+            }
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6)) as {
-            type: string
-            candidates?: number
-            processed?: number
-            total?: number
-            findings?: AnomalyFinding[]
-            message?: string
-          }
-
-          if (data.type === 'stage1_done') {
-            setStage(`Analyzing ${data.candidates} candidates with AI…`)
-          } else if (data.type === 'stage2_progress') {
-            setStage(`Explaining ${data.processed}/${data.total} findings…`)
-          } else if (data.type === 'done') {
-            setFindings(data.findings ?? [])
-            toast.success(`Found ${data.findings?.length ?? 0} anomalies`)
-          } else if (data.type === 'error') {
-            toast.error(data.message ?? 'Analysis failed')
-          }
-        }
-      }
+            if (data.type === 'error') {
+              toast.error(data.message ?? 'Analysis failed')
+            }
+          },
+        },
+      )
     } catch (err) {
       toast.error('Analysis failed. Check server logs.')
       console.error('[AnomalyAlerts]', err)

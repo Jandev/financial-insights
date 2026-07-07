@@ -16,6 +16,10 @@
  *   PUT  /api/state/categories           — persist category overrides
  *   GET  /api/state/rules                — load custom category rules
  *   PUT  /api/state/rules                — persist custom rules
+ *   GET  /api/state/spaarpotjes          — load savings goal accounts
+ *   PUT  /api/state/spaarpotjes          — persist savings goal accounts
+ *   GET  /api/state/personal-accounts    — load personal account IBANs
+ *   PUT  /api/state/personal-accounts    — persist personal account IBANs
  *   GET  /api/state/anomalies            — load anomaly findings
  *   PUT  /api/state/anomalies            — persist anomaly findings
  *   GET  /api/state/insights/:period     — load insight for a period
@@ -43,7 +47,6 @@ import { mkdir, readdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import basicAuth from './middleware/basicAuth.js'
 import { llmRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
 import { loadFromDisk } from './services/transactionStore.js'
@@ -94,7 +97,6 @@ const app = express()
 app.use(cors())
 app.use('/api/llm/transactions/sync', express.json({ limit: '10mb' }))
 app.use(express.json())
-app.use(basicAuth)
 
 // ── API routes ────────────────────────────────────────────────────────────────
 

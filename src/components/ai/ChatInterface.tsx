@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/Button'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { randomUUID } from '@/lib/uuid'
-import type { ChatMessage } from '@/store/slices/llmSlice'
+import { readSSEStream } from '@/lib/sse'
+import type { ChatMessage } from '@/store/slices/llmTypes'
 
 const SUGGESTED_QUESTIONS = [
   'Where am I spending the most this month?',
@@ -25,6 +26,7 @@ export function ChatInterface() {
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const chatMessagesRef = useRef<ChatMessage[]>([])
 
   const chatThreadId = useStore((s) => s.chatThreadId)
   const chatMessages = useStore((s) => s.chatMessages)
@@ -34,7 +36,9 @@ export function ChatInterface() {
   const clearChat = useStore((s) => s.clearChat)
   const llmAvailable = useStore((s) => s.llmAvailable)
   const serverStateAvailable = useStore((s) => s.serverStateAvailable)
+  const aiCategories = useStore((s) => s.aiCategories)
   const setAiCategories = useStore((s) => s.setAiCategories)
+  const aiCategoriesRef = useRef(aiCategories)
 
   // Restore threadId from sessionStorage on mount
   useEffect(() => {
@@ -48,6 +52,14 @@ export function ChatInterface() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
+
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+  }, [chatMessages])
+
+  useEffect(() => {
+    aiCategoriesRef.current = aiCategories
+  }, [aiCategories])
 
   async function sendMessage(text: string) {
     if (!text.trim() || isSending) return
@@ -89,68 +101,63 @@ export function ChatInterface() {
       addChatMessage(assistantMsg)
 
       // Step 2: SSE stream the response
-      const streamRes = await fetch(`/api/llm/chat/${threadId}/stream`)
-      if (!streamRes.ok || !streamRes.body) throw new Error('Failed to connect to stream')
+      await readSSEStream<{
+        type: string
+        text?: string
+        tool?: string
+        summary?: string
+        message?: string
+      }>(
+        `/api/llm/chat/${threadId}/stream`,
+        {},
+        {
+          onData: (data) => {
+            if (data.type === 'token' && data.text) {
+              updateLastAssistantMessage(data.text)
+              return
+            }
 
-      const reader = streamRes.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+            if (data.type === 'tool_call') {
+              const currentMsgs = chatMessagesRef.current
+              const lastMsg = currentMsgs[currentMsgs.length - 1]
+              updateLastAssistantMessage('', [
+                ...(lastMsg?.toolCalls ?? []),
+                { tool: data.tool ?? '', summary: `Checking ${data.tool}…` },
+              ])
+              return
+            }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+            if (data.type === 'categories_updated') {
+              // Advisor ran runCategorization — re-fetch and merge into store.
+              // Merge (not replace) so a period-scoped chat categorization does
+              // not wipe out AI categories from a prior full-run via the button.
+              fetch('/api/state/categories')
+                .then((r) => r.ok ? r.json() : null)
+                .then((json: { data?: Record<string, { category: string; confidence: number; reasoning: string; source: string }> } | null) => {
+                  if (!json) return
+                  const raw = json.data ?? {}
+                  const newEntries = Object.fromEntries(
+                    Object.entries(raw)
+                      .filter(([, v]) => v.source === 'llm')
+                      .map(([id, v]) => [id, { category: v.category, confidence: v.confidence, reasoning: v.reasoning, source: 'llm' as const }]),
+                  )
+                  if (Object.keys(newEntries).length > 0) {
+                    const existing = aiCategoriesRef.current
+                    setAiCategories({ ...existing, ...newEntries })
+                  }
+                })
+                .catch(() => {
+                  // best-effort
+                })
+              return
+            }
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6)) as {
-            type: string
-            text?: string
-            tool?: string
-            summary?: string
-            message?: string
-          }
-
-          if (data.type === 'token' && data.text) {
-            updateLastAssistantMessage(data.text)
-            } else if (data.type === 'tool_call') {
-            // Read current state directly — avoids stale closure over chatMessages
-            // captured at render time (would drop chips on multi-tool turns).
-            const currentMsgs = useStore.getState().chatMessages
-            const lastMsg = currentMsgs[currentMsgs.length - 1]
-            updateLastAssistantMessage('', [
-              ...(lastMsg?.toolCalls ?? []),
-              { tool: data.tool ?? '', summary: `Checking ${data.tool}…` },
-            ])
-          } else if (data.type === 'categories_updated') {
-            // Advisor ran runCategorization — re-fetch and merge into store.
-            // Merge (not replace) so a period-scoped chat categorization does
-            // not wipe out AI categories from a prior full-run via the button.
-            fetch('/api/state/categories')
-              .then((r) => r.ok ? r.json() : null)
-              .then((json: { data?: Record<string, { category: string; confidence: number; reasoning: string; source: string }> } | null) => {
-                if (!json) return
-                const raw = json.data ?? {}
-                const newEntries = Object.fromEntries(
-                  Object.entries(raw)
-                    .filter(([, v]) => v.source === 'llm')
-                    .map(([id, v]) => [id, { category: v.category, confidence: v.confidence, reasoning: v.reasoning, source: 'llm' as const }])
-                )
-                if (Object.keys(newEntries).length > 0) {
-                  const existing = useStore.getState().aiCategories
-                  setAiCategories({ ...existing, ...newEntries })
-                }
-              })
-              .catch(() => {/* best-effort */})
-          } else if (data.type === 'tool_result') {
-            // no-op — summary shown via tool_call chip
-          } else if (data.type === 'error') {
-            updateLastAssistantMessage(data.message ?? 'An error occurred.')
-          }
-        }
-      }
+            if (data.type === 'error') {
+              updateLastAssistantMessage(data.message ?? 'An error occurred.')
+            }
+          },
+        },
+      )
     } catch (err) {
       console.error('[ChatInterface]', err)
       addChatMessage({

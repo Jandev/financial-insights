@@ -7,10 +7,14 @@ import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
+// ─── Narrow prop type ─────────────────────────────────────────────────────────
+
+type TxSummary = Pick<Transaction, 'id' | 'date' | 'counterpartyName' | 'description' | 'amount' | 'category'>
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  transactions: Transaction[]
+  transactions: TxSummary[]
 }
 
 // ─── Single list ──────────────────────────────────────────────────────────────
@@ -22,9 +26,9 @@ function TxList({
   onRowClick,
 }: {
   title: string
-  txs: Transaction[]
+  txs: TxSummary[]
   excludedIds: Set<string>
-  onRowClick: (tx: Transaction) => void
+  onRowClick: (tx: TxSummary) => void
 }) {
   if (txs.length === 0) {
     return (
@@ -130,7 +134,7 @@ export function BiggestTransactions({ transactions }: Props) {
     [transactions],
   )
 
-  function handleRowClick(tx: Transaction) {
+  function handleRowClick(tx: TxSummary) {
     navigate(`/transactions?highlight=${tx.id}`)
   }
 

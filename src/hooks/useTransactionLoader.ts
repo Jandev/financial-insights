@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { loadAllTransactions } from '@/lib/csvLoader'
+import { readRulesFromStorage, readOverridesFromStorage } from '@/lib/categories'
+import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
+import { readSavingsAccountsFromStorage } from '@/hooks/useSavingsAccounts'
 import { useStore } from '@/store'
 import type { LoadingState } from '@/types/loader'
 
@@ -19,7 +22,17 @@ import type { LoadingState } from '@/types/loader'
  * @returns `{ loadingState }` — same object as `useStore().loadingState`
  */
 export function useTransactionLoader() {
-  const { loadingState, csvLoadKey, setTransactions, setLoadingState, logFile } = useStore()
+  const {
+    loadingState,
+    csvLoadKey,
+    setTransactions,
+    setLoadingState,
+    logFile,
+    setCategorizationRules,
+    setCategoryOverridesState,
+    setSavingsAccountsState,
+    setPersonalAccountsState,
+  } = useStore()
 
   // Tracks which csvLoadKey was last started — prevents double-fire in StrictMode
   const hasStartedForKey = useRef<number>(-1)
@@ -37,7 +50,23 @@ export function useTransactionLoader() {
       errors: [],
     })
 
+    const rules = readRulesFromStorage()
+    const overrides = readOverridesFromStorage()
+    const savingsAccounts = readSavingsAccountsFromStorage()
+    const personalAccounts = readPersonalAccountsFromStorage()
+
+    setCategorizationRules(rules)
+    setCategoryOverridesState(overrides)
+    setSavingsAccountsState(savingsAccounts)
+    setPersonalAccountsState(personalAccounts)
+
     loadAllTransactions(
+      {
+        rules,
+        overrides,
+        personalAccounts,
+        savingsAccounts,
+      },
       (progress: LoadingState) => setLoadingState(progress),
       (entry) => logFile(entry),
     )
@@ -52,7 +81,7 @@ export function useTransactionLoader() {
           errors: [err instanceof Error ? err.message : String(err)],
         })
       })
-  }, [csvLoadKey, setTransactions, setLoadingState, logFile])
+  }, [csvLoadKey, setTransactions, setLoadingState, logFile, setCategorizationRules, setCategoryOverridesState, setSavingsAccountsState, setPersonalAccountsState])
 
   return { loadingState }
 }

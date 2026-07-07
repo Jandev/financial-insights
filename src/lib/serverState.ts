@@ -31,7 +31,10 @@ const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>()
 /**
  * Schedule a debounced PUT /api/state/:key with the given data.
  *
- * - No-op when the server state API is not available (`_serverAvailable = false`).
+ * - Returns `false` (and does nothing) when the server state API is not
+ *   available, making the invisible `_serverAvailable` dependency observable
+ *   by callers (DIP fix — issue #62).
+ * - Returns `true` when the write has been queued.
  * - Calls are coalesced: only the latest data within `delay` ms is sent.
  * - Fails silently on network error.
  *
@@ -39,8 +42,8 @@ const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>()
  * @param data  Body to send as JSON
  * @param delay Debounce window in ms (default 500)
  */
-export function debouncePut<T>(key: string, data: T, delay = 500): void {
-  if (!_serverAvailable) return
+export function debouncePut<T>(key: string, data: T, delay = 500): boolean {
+  if (!_serverAvailable) return false
 
   const existing = pendingWrites.get(key)
   if (existing !== undefined) clearTimeout(existing)
@@ -65,4 +68,6 @@ export function debouncePut<T>(key: string, data: T, delay = 500): void {
       })()
     }, delay),
   )
+
+  return true
 }

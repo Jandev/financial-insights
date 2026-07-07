@@ -3,18 +3,12 @@ import type { Transaction } from '@/types/transaction'
 import type { LoadingState, LoadedFileEntry } from '@/types/loader'
 import { initialLoadingState } from '@/types/loader'
 import {
-  categorizeWithPersonalFallback,
-  mergeRules,
-  readRulesFromStorage,
-  readOverridesFromStorage,
-  matchSpaarpotje,
-  INTERNAL_TRANSFER_RULE_IDS,
+  buildCategorizedTransactions,
+  type CategoryOverrides,
+  type CategoryRule,
 } from '@/lib/categories'
-import {
-  readSavingsAccountsFromStorage,
-  readTagOverridesFromStorage,
-} from '@/hooks/useSavingsAccounts'
-import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
+import type { SavingsAccount } from '@/types/savingsAccount'
+import type { PersonalAccount } from '@/types/personalAccount'
 import type { StoreState } from '../useStore'
 
 export interface TransactionSlice {
@@ -26,17 +20,29 @@ export interface TransactionSlice {
   /** Incremented to trigger a fresh CSV reload (e.g. "Hard CSV refresh") */
   csvLoadKey: number
 
+  /** Categorization dependencies synced by hooks/hydration. */
+  categorizationRules: CategoryRule[]
+  categoryOverridesState: CategoryOverrides
+  savingsAccountsState: SavingsAccount[]
+  tagOverridesState: Record<string, string[]>
+  personalAccountsState: PersonalAccount[]
+
   // ── Actions ────────────────────────────────────────────────────────────────
   setTransactions: (transactions: Transaction[]) => void
   setLoadingState: (state: LoadingState) => void
   logFile: (entry: LoadedFileEntry) => void
   /** Bump csvLoadKey to trigger useTransactionLoader to reload CSV data. */
   bumpCsvLoadKey: () => void
+  setCategorizationRules: (rules: CategoryRule[]) => void
+  setCategoryOverridesState: (overrides: CategoryOverrides) => void
+  setSavingsAccountsState: (accounts: SavingsAccount[]) => void
+  setTagOverridesState: (overrides: Record<string, string[]>) => void
+  setPersonalAccountsState: (accounts: PersonalAccount[]) => void
 
   /**
-   * Re-categorize all transactions using the current rules and overrides from
-   * localStorage. Call this after custom rules or manual overrides change so
-   * derived selectors (useCategoryTotals etc.) recompute with fresh data.
+   * Re-categorize all transactions using current categorization inputs from
+   * Zustand state. Call this after rules, overrides, or account settings
+   * change so derived selectors recompute with fresh data.
    */
   recategorize: () => void
 }
@@ -51,6 +57,11 @@ export const createTransactionSlice: StateCreator<
   loadingState: initialLoadingState,
   fileLog: [],
   csvLoadKey: 0,
+  categorizationRules: [],
+  categoryOverridesState: {},
+  savingsAccountsState: [],
+  tagOverridesState: {},
+  personalAccountsState: [],
 
   setTransactions: (transactions) => set({ transactions }),
 
@@ -62,41 +73,34 @@ export const createTransactionSlice: StateCreator<
   bumpCsvLoadKey: () =>
     set((s) => ({ csvLoadKey: s.csvLoadKey + 1, fileLog: [] })),
 
+  setCategorizationRules: (categorizationRules) => set({ categorizationRules }),
+
+  setCategoryOverridesState: (categoryOverridesState) => set({ categoryOverridesState }),
+
+  setSavingsAccountsState: (savingsAccountsState) => set({ savingsAccountsState }),
+
+  setTagOverridesState: (tagOverridesState) => set({ tagOverridesState }),
+
+  setPersonalAccountsState: (personalAccountsState) => set({ personalAccountsState }),
+
   recategorize: () => {
-    const { transactions } = get()
+    const {
+      transactions,
+      categorizationRules,
+      categoryOverridesState,
+      savingsAccountsState,
+      tagOverridesState,
+      personalAccountsState,
+    } = get()
+
     if (transactions.length === 0) return
 
-    const customRules = readRulesFromStorage()
-    // Exclude tb-based fallback rules — internal-transfer only via explicit Personal Accounts.
-    const rules = mergeRules(customRules).filter((r) => !INTERNAL_TRANSFER_RULE_IDS.has(r.id))
-    const overrides = readOverridesFromStorage()
-    const spaarpotjes = readSavingsAccountsFromStorage()
-    const tagOverrides = readTagOverridesFromStorage()
-    const personalAccounts = readPersonalAccountsFromStorage()
-
-    const recategorized = transactions.map((tx) => {
-      // 1. Spaarpotje IBAN match — highest priority, overrides all rules
-      const potMatch = matchSpaarpotje(tx, spaarpotjes)
-      if (potMatch) {
-        const tags = tagOverrides[tx.id] ?? [potMatch.tag]
-        return { ...tx, category: potMatch.category, tags }
-      }
-
-      // 2. Manual category override wins over auto-classification
-      const manualOverride = overrides[tx.id]
-      if (manualOverride !== undefined) {
-        const tags = tagOverrides[tx.id] ?? []
-        return { ...tx, category: manualOverride, tags }
-      }
-
-      // 3. Rule engine first; personal-account fallback applies only when
-      //    no rule matches (uncategorized).
-      const category = categorizeWithPersonalFallback(tx, rules, personalAccounts)
-      const tags = tagOverrides[tx.id] ?? []
-
-      return category === tx.category && tags.length === 0 && (tx.tags ?? []).length === 0
-        ? tx
-        : { ...tx, category, tags }
+    const recategorized = buildCategorizedTransactions(transactions, {
+      rules: categorizationRules,
+      overrides: categoryOverridesState,
+      savingsAccounts: savingsAccountsState,
+      tagOverrides: tagOverridesState,
+      personalAccounts: personalAccountsState,
     })
 
     set({ transactions: recategorized })

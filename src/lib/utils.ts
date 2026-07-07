@@ -1,9 +1,42 @@
 import { type ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { DateRange } from '@/components/ui/RangeSelector'
 
 export function cn(...inputs: Parameters<typeof clsx>) {
   return twMerge(clsx(...inputs))
+}
+
+/**
+ * Map a DateRange enum value to a cutoff Date (or null for 'all').
+ * Shared by DashboardPage and InsightsPage.
+ */
+export function computeDateFrom(range: DateRange): Date | null {
+  if (range === 'all') return null
+  const months = range === '3m' ? 3 : range === '6m' ? 6 : 12
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth() - months, now.getDate())
+}
+
+/**
+ * Convert a zero-based YYYY-MM key (e.g. "2024-02") to a full label
+ * (e.g. "March 2024"). Returns "—" for empty input.
+ */
+export function monthKeyToLabel(key: string): string {
+  if (!key) return '—'
+  const [y, m] = key.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+    new Date(y, m, 1),
+  )
+}
+
+/**
+ * Format a signed delta with +/− prefix using the Euro currency formatter.
+ * e.g. 45.5 → "+€ 45,50", -100 → "−€ 100,00"
+ */
+export function signedFmt(delta: number): string {
+  const sign = delta >= 0 ? '+' : '−'
+  return `${sign}${formatCurrency(Math.abs(delta))}`
 }
 
 /** Format a number as a Euro amount using Dutch locale (e.g. `€ 1.234,56`). */
@@ -45,6 +78,17 @@ export function formatTime(date: Date): string {
     minute: '2-digit',
     second: '2-digit',
   }).format(date)
+}
+
+export function normalizeIBAN(value: string): string {
+  return value.replace(/\s/g, '').toUpperCase()
+}
+
+export function validateIBAN(value: string): string | null {
+  const normalized = normalizeIBAN(value)
+  if (!normalized) return 'IBAN is required'
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalized)) return 'Invalid IBAN format'
+  return null
 }
 
 export type { ReactNode }

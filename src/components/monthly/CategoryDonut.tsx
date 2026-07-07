@@ -8,17 +8,14 @@ import {
   type PieSectorDataItem,
 } from 'recharts'
 import { formatCurrency } from '@/lib/utils'
+import type { MonthlyCategoryTotal } from '@/types/monthly'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface DonutSlice {
-  groupKey: string
-  categoryIds: string[]
-  name: string
-  color: string
-  total: number
-  percentage: number
-}
+export type DonutSlice = Pick<
+  MonthlyCategoryTotal,
+  'groupKey' | 'categoryIds' | 'name' | 'color' | 'total' | 'percentage'
+>
 
 interface Props {
   slices: DonutSlice[]

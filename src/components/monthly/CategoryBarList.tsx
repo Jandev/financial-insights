@@ -1,16 +1,13 @@
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils'
+import type { MonthlyCategoryTotal } from '@/types/monthly'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface BarListItem {
-  groupKey: string
-  categoryIds: string[]
-  name: string
-  color: string
-  total: number
-  percentage: number
-}
+export type BarListItem = Pick<
+  MonthlyCategoryTotal,
+  'groupKey' | 'categoryIds' | 'name' | 'color' | 'total' | 'percentage'
+>
 
 interface Props {
   items: BarListItem[]
