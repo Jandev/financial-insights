@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   type TooltipContentProps,
 } from 'recharts'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useCategoryRuleList } from '@/store/selectors'
 import { cn, formatCurrency } from '@/lib/utils'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
@@ -146,7 +146,7 @@ interface Props {
 
 export function MonthlySpendTrendChart({ transactions }: Props) {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
 
   const categoryMetaById = useMemo(() => {
     const colorByName = new Map<string, string>()

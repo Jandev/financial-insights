@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, X, ChevronDown, Check, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useCategoryRuleList } from '@/store/selectors'
 import { DEFAULT_FILTERS } from '@/store/slices/filterSlice'
 import type { TransactionCode } from '@/types/transaction'
 
@@ -152,7 +152,7 @@ export function FilterBar() {
   const setFilter = useStore((s) => s.setFilter)
   const clearFilters = useStore((s) => s.clearFilters)
 
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
 
   // Group all rules by display name → [ids].
   // Multiple rules can share a name (e.g. a default "Groceries" rule and a

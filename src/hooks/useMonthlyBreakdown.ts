@@ -1,10 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@/store'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { signedFmt, monthKeyToLabel } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction, FALLBACK_CATEGORY_COLOR, type CategoryRule } from '@/lib/categories'
-import { useAvailableMonths } from '@/store/selectors'
+import { useAvailableMonths, useCategoryRuleList } from '@/store/selectors'
 import { useDefaultMonth } from '@/hooks/useDefaultMonth'
 import type { Transaction } from '@/types/transaction'
 import type { MonthlyCategoryTotal } from '@/types/monthly'
@@ -100,7 +99,7 @@ export function useMonthlyBreakdown(): MonthlyBreakdown {
     })),
   )
 
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
 
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
 

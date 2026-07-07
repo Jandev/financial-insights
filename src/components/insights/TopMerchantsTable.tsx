@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { useStore } from '@/store'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useCategoryRuleList } from '@/store/selectors'
 import { cn, formatCurrency } from '@/lib/utils'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
@@ -116,7 +116,7 @@ export function TopMerchantsTable({ transactions }: Props) {
   const [sortCol, setSortCol] = useState<SortCol>('rank')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const navigate = useNavigate()
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
   const setFilter = useStore((s) => s.setFilter)
   const clearFilters = useStore((s) => s.clearFilters)
 

@@ -7,9 +7,10 @@ import {
   isExpenseTransaction,
   FALLBACK_CATEGORY_COLOR,
   FALLBACK_CATEGORY_ICON,
+  applyDefaultNameOverrides,
   type CategoryRule,
 } from '@/lib/categories'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 import type { Filters } from './slices/filterSlice'
@@ -51,6 +52,28 @@ export function useAvailableMonths(txns?: Transaction[]): string[] {
     }
     return [...set].sort()
   }, [source])
+}
+
+// ─── Read-only category rule list ─────────────────────────────────────────────
+
+/**
+ * Read-only selector for the full active rule list (custom + defaults with
+ * name overrides applied). Preferred over `useCategoryRules()` for components
+ * that only need to display or filter by rules and do not perform mutations.
+ *
+ * Reads `categorizationRules` (custom rules only) directly from Zustand —
+ * already kept in sync by `useCategoryRules` on every mutation — and
+ * composes with `DEFAULT_RULES` + the current name-override map.
+ *
+ * ISP fix — issue #62 item 2.
+ */
+export function useCategoryRuleList(): CategoryRule[] {
+  const categorizationRules = useStore((s) => s.categorizationRules)
+  const { overrides } = useDefaultNameOverrides()
+  return useMemo(
+    () => [...categorizationRules, ...applyDefaultNameOverrides(DEFAULT_RULES, overrides)],
+    [categorizationRules, overrides],
+  )
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -263,7 +286,7 @@ export function useMonthlyTotals(): MonthlyTotal[] {
  */
 export function useCategoryTotals(): CategoryTotal[] {
   const active = useActiveTransactions()
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
 
   return useMemo(() => {
     const meta = buildCategoryMeta(rules)

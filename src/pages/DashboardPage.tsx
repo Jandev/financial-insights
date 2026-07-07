@@ -13,8 +13,7 @@ import { TopExpenses } from '@/components/dashboard/TopExpenses'
 import { SpaarpotjesWidget } from '@/components/dashboard/SpaarpotjesWidget'
 import { formatCurrency, computeDateFrom, monthKeyToLabel, signedFmt } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
-import { useCategoryRules } from '@/hooks/useCategoryRules'
-import { useNonExcludedTransactions, useAvailableMonths } from '@/store/selectors'
+import { useNonExcludedTransactions, useAvailableMonths, useCategoryRuleList } from '@/store/selectors'
 import { useDefaultMonth } from '@/hooks/useDefaultMonth'
 import { useRollingBalance } from '@/hooks/useRollingBalance'
 import type { Transaction } from '@/types/transaction'
@@ -32,7 +31,6 @@ function buildBarLabel(date: Date, multiYear: boolean): string {
 export function DashboardPage() {
   const [range, setRange] = useState<DateRange>('3m')
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
-  const { rules } = useCategoryRules()
 
   const loadingState = useStore((s) => s.loadingState)
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
@@ -44,6 +42,9 @@ export function DashboardPage() {
 
   // ── Default to the most recent month once data is loaded ──────────────────
   useDefaultMonth(availableMonths, selectedMonthKey, setSelectedMonthKey)
+
+  // ── Category name lookup for Top Expenses ─────────────────────────────────
+  const rules = useCategoryRuleList()
 
   // ── Transactions for the selected calendar month (KPIs + Top Expenses) ─────
   const monthTxns = useMemo(() => {

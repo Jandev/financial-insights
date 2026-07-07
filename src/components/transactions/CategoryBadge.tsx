@@ -4,6 +4,7 @@ import { Search, Pencil, Check, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useCategoryRuleList } from '@/store/selectors'
 import { useStore } from '@/store'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
@@ -245,7 +246,7 @@ interface CategoryBadgeProps {
  */
 export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
   const [open, setOpen] = useState(false)
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
   const aiCategories = useStore((s) => s.aiCategories)
 
   // Resolve name + color from the full ruleset (covers custom rules too)
