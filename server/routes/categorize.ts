@@ -24,6 +24,9 @@ export function createCategorizeRouter(stateStore: StateStore): Router {
     const sse = createSSEStream(res)
 
     try {
+      const body = req.body as { period?: string }
+      const period = body.period && body.period !== 'all' ? body.period : undefined
+
       // Merge custom rules (from StateStore) with defaults so the LLM is aware
       // of user-defined categories. Custom rules are prepended — first match wins
       // during name→ID resolution, giving custom rules priority.
@@ -32,15 +35,16 @@ export function createCategorizeRouter(stateStore: StateStore): Router {
       const availableCategories = [...customRules, ...DEFAULT_AVAILABLE_CATEGORIES]
 
       const allResults = await runBatchCategorization(
-        undefined, // always "all" from the button
+        period,
         (processed, total, batchResults) => {
           sse.send({ type: 'progress', processed, total, results: batchResults })
         },
         availableCategories,
       )
 
-      // Persist to StateStore
-      await stateStore.write<Record<string, unknown>>('categories', allResults).catch((err) => {
+      // Persist to StateStore — use a dedicated key so AI results never
+      // collide with the manual overrides stored under "categories".
+      await stateStore.write<Record<string, unknown>>('ai-categories', allResults).catch((err) => {
         console.error('[categorize] failed to persist to stateStore:', err)
       })
 

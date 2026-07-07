@@ -42,12 +42,15 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
   const { overrides, setOverride, removeOverride } = useCategoryOverrides()
   const { rules, addRule } = useCategoryRules()
   const recategorize = useStore((s) => s.recategorize)
+  const aiCategories = useStore((s) => s.aiCategories)
+  const removeAiCategory = useStore((s) => s.removeAiCategory)
 
   const [step, setStep] = useState<PickerStep>('list')
   const [search, setSearch] = useState('')
   const [pendingCategory, setPendingCategory] = useState<GroupedCategoryOption | null>(null)
 
   const hasOverride = Boolean(overrides[tx.id])
+  const isAICategorized = aiCategories[tx.id]?.source === 'llm'
 
   // Group categories by display name (first-seen color/icon wins).
   const allCategories = useMemo(() => {
@@ -118,6 +121,12 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
     onClose()
   }
 
+  function handleRevertAiCategory() {
+    removeAiCategory(tx.id)
+    recategorize()
+    onClose()
+  }
+
   return (
     <div className="w-64 overflow-hidden">
       {step === 'list' ? (
@@ -176,6 +185,19 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
                 className="w-full text-left px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors cursor-pointer"
               >
                 Restore rule-based category
+              </button>
+            </div>
+          )}
+
+          {/* Revert AI category footer */}
+          {isAICategorized && !hasOverride && (
+            <div className="border-t border-border p-2">
+              <button
+                type="button"
+                onClick={handleRevertAiCategory}
+                className="w-full text-left px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Revert to rule-based category
               </button>
             </div>
           )}

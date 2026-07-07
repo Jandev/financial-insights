@@ -7,6 +7,7 @@ import { CategoryDonut } from '@/components/monthly/CategoryDonut'
 import { CategoryBarList } from '@/components/monthly/CategoryBarList'
 import { MonthlyTransactionList } from '@/components/monthly/MonthlyTransactionList'
 import { AIInsightCard } from '@/components/ai/AIInsightCard'
+import { AICategorizeButton } from '@/components/ai/AICategorizeButton'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { MonthlyBreakdown } from '@/hooks/useMonthlyBreakdown'
 
@@ -73,14 +74,19 @@ export function MonthlyPageContent({ data }: MonthlyPageContentProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Monthly Overview</h1>
-        {!data.isLoading && data.availableMonths.length > 0 && (
-          <MonthNavigator
-            months={data.availableMonths}
-            selected={data.selectedMonthKey}
-            onChange={data.handleMonthChange}
-          />
-        )}
-        {data.isLoading && <Bone className="h-7 w-40" />}
+        <div className="flex items-center gap-3">
+          {!data.isLoading && data.availableMonths.length > 0 && (
+            <MonthNavigator
+              months={data.availableMonths}
+              selected={data.selectedMonthKey}
+              onChange={data.handleMonthChange}
+            />
+          )}
+          {data.isLoading && <Bone className="h-7 w-40" />}
+          {!data.isLoading && !data.isEmpty && (
+            <AICategorizeButton period={data.periodIso} />
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

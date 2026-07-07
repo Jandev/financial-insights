@@ -13,6 +13,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import type { AICategoryResult } from '@/store/slices/llmTypes'
 import { readSSEStream } from '@/lib/sse'
+import { debouncePut } from '@/lib/serverState'
 
 interface ProgressState {
   processed: number
@@ -22,9 +23,11 @@ interface ProgressState {
 interface AICategorizeButtonProps {
   /** Called after successful categorization so the parent can refresh */
   onComplete?: () => void
+  /** ISO YYYY-MM period to restrict categorization to. Omit for all transactions. */
+  period?: string
 }
 
-export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
+export function AICategorizeButton({ onComplete, period }: AICategorizeButtonProps) {
   const [progress, setProgress] = useState<ProgressState | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -54,7 +57,7 @@ export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: 'all' }),
+          body: JSON.stringify({ period: period ?? 'all' }),
           signal: abortRef.current.signal,
         },
         {
@@ -101,6 +104,7 @@ export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
 
   function handleUndo() {
     clearAiCategories()
+    debouncePut('ai-categories', {})
     toast.success('Reverted to rule-based categorization')
   }
 

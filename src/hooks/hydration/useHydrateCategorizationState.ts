@@ -19,6 +19,7 @@ export function useHydrateCategorizationState() {
     const [
       exclusionsResult,
       categoriesResult,
+      aiCategoriesResult,
       rulesResult,
       spaarpotjesResult,
       tagOverridesResult,
@@ -27,6 +28,7 @@ export function useHydrateCategorizationState() {
     ] = await Promise.allSettled([
       fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/categories').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/state/ai-categories').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/spaarpotjes').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/tag-overrides').then((r) => (r.ok ? r.json() : null)),
@@ -40,22 +42,21 @@ export function useHydrateCategorizationState() {
     }
 
     if (categoriesResult.status === 'fulfilled' && categoriesResult.value !== null) {
+      // "categories" stores only manual string overrides (txId → categoryId).
       const data = categoriesResult.value?.data ?? {}
-      const aiEntries = Object.entries(data as Record<string, AICategoryResult>).filter(
-        ([, value]) => typeof value === 'object' && value !== null && value.source === 'llm',
-      )
-      setAiCategories(Object.fromEntries(aiEntries))
-
       const overrides: Record<string, string> = {}
-      for (const [id, value] of Object.entries(data as Record<string, AICategoryResult | string>)) {
+      for (const [id, value] of Object.entries(data as Record<string, unknown>)) {
         if (typeof value === 'string') {
-          // Manual override stored as plain string categoryId
           overrides[id] = value
-        } else if (typeof value === 'object' && value !== null && value.source === 'rule') {
-          overrides[id] = value.category
         }
       }
       setCategoryOverridesState(overrides)
+    }
+
+    if (aiCategoriesResult.status === 'fulfilled' && aiCategoriesResult.value !== null) {
+      // "ai-categories" stores AICategoryResult objects written by the categorize route.
+      const data = aiCategoriesResult.value?.data ?? {}
+      setAiCategories(data as Record<string, AICategoryResult>)
     }
 
     if (rulesResult.status === 'fulfilled' && rulesResult.value !== null) {
