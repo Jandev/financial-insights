@@ -2,36 +2,19 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@/store'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
-import { formatCurrency } from '@/lib/utils'
-import { isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
+import { signedFmt, monthKeyToLabel } from '@/lib/utils'
+import { isIncomeTransaction, isExpenseTransaction, FALLBACK_CATEGORY_COLOR, type CategoryRule } from '@/lib/categories'
+import { useAvailableMonths } from '@/store/selectors'
+import { useDefaultMonth } from '@/hooks/useDefaultMonth'
 import type { Transaction } from '@/types/transaction'
 import type { MonthlyCategoryTotal } from '@/types/monthly'
 import type { ActiveFilter } from '@/components/monthly/MonthlyTransactionList'
-
-function signedFmt(delta: number): string {
-  const sign = delta >= 0 ? '+' : '−'
-  return `${sign}${formatCurrency(Math.abs(delta))}`
-}
 
 function pctFmt(value: number, prev: number): string {
   if (prev === 0) return '—'
   const pct = ((value - prev) / prev) * 100
   const sign = pct >= 0 ? '+' : '−'
   return `${sign}${Math.abs(pct).toFixed(1)}%`
-}
-
-export function monthKeyToLabel(key: string): string {
-  if (!key) return '—'
-  const [year, month] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(year, month, 1),
-  )
-}
-
-function monthKeyToShortLabel(key: string): string {
-  if (!key) return '—'
-  const [year, month] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(year, month, 1))
 }
 
 export function keyToIsoPeriod(key: string): string {
@@ -57,7 +40,7 @@ function buildCategoryTotals(txns: Transaction[], rules: CategoryRule[]): Monthl
       groupKey,
       categoryIds: [tx.category],
       name: groupKey,
-      color: ruleMeta?.color ?? '#8E8E93',
+      color: ruleMeta?.color ?? FALLBACK_CATEGORY_COLOR,
       total: Math.abs(tx.amount),
     })
   }
@@ -126,21 +109,9 @@ export function useMonthlyBreakdown(): MonthlyBreakdown {
     [transactions, excludedIds],
   )
 
-  const availableMonths = useMemo(() => {
-    const monthSet = new Set<string>()
-    for (const tx of allActive) {
-      const year = tx.date.getFullYear()
-      const month = tx.date.getMonth()
-      monthSet.add(`${year}-${String(month).padStart(2, '0')}`)
-    }
-    return [...monthSet].sort()
-  }, [allActive])
+  const availableMonths = useAvailableMonths(allActive)
 
-  useEffect(() => {
-    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonthKey)) {
-      setSelectedMonthKey(availableMonths[availableMonths.length - 1])
-    }
-  }, [availableMonths, selectedMonthKey])
+  useDefaultMonth(availableMonths, selectedMonthKey, setSelectedMonthKey)
 
   const handleMonthChange = useCallback((key: string) => {
     setSelectedMonthKey(key)
@@ -209,7 +180,9 @@ export function useMonthlyBreakdown(): MonthlyBreakdown {
     const prevExpenses = prevTxns.filter(isExpenseTransaction).reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
 
     return {
-      prevMonthName: monthKeyToShortLabel(prevKey),
+      prevMonthName: new Intl.DateTimeFormat('en-US', { month: 'long' }).format(
+        new Date(prevYear, prevMonth, 1),
+      ),
       income: prevIncome,
       expenses: prevExpenses,
       net: prevIncome - prevExpenses,

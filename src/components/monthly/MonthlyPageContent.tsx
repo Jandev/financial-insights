@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { Bone } from '@/components/ui/Bone'
 import { MonthNavigator } from '@/components/ui/MonthNavigator'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { CategoryDonut } from '@/components/monthly/CategoryDonut'
@@ -8,10 +9,6 @@ import { MonthlyTransactionList } from '@/components/monthly/MonthlyTransactionL
 import { AIInsightCard } from '@/components/ai/AIInsightCard'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { MonthlyBreakdown } from '@/hooks/useMonthlyBreakdown'
-
-function Bone({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded bg-bg-elevated ${className}`} />
-}
 
 interface DeltaRowProps {
   label: string

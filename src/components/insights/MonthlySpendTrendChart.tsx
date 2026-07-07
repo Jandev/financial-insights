@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { cn, formatCurrency } from '@/lib/utils'
+import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ function buildChartData(
   for (const tx of expenses) {
     const meta = categoryMetaById.get(tx.category) ?? {
       name: tx.category || 'Uncategorized',
-      color: '#8E8E93',
+      color: FALLBACK_CATEGORY_COLOR,
     }
     const current = catTotals.get(meta.name)
     if (current) {
@@ -69,7 +70,7 @@ function buildChartData(
   for (const tx of expenses) {
     const meta = categoryMetaById.get(tx.category) ?? {
       name: tx.category || 'Uncategorized',
-      color: '#8E8E93',
+      color: FALLBACK_CATEGORY_COLOR,
     }
     if (!topNameSet.has(meta.name)) continue
 

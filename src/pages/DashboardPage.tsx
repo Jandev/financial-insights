@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { useState, useMemo } from 'react'
 import { AlertCircle } from 'lucide-react'
 
 import { useStore } from '@/store'
 import { Card } from '@/components/ui/Card'
+import { Bone } from '@/components/ui/Bone'
 import { RangeSelector, type DateRange } from '@/components/ui/RangeSelector'
 import { MonthNavigator } from '@/components/ui/MonthNavigator'
 import { KpiCard } from '@/components/dashboard/KpiCard'
@@ -11,43 +11,20 @@ import { MonthlyBarChart } from '@/components/dashboard/MonthlyBarChart'
 import { BalanceLineChart } from '@/components/dashboard/BalanceLineChart'
 import { TopExpenses } from '@/components/dashboard/TopExpenses'
 import { SpaarpotjesWidget } from '@/components/dashboard/SpaarpotjesWidget'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, computeDateFrom, monthKeyToLabel, signedFmt } from '@/lib/utils'
 import { isIncomeTransaction, isExpenseTransaction } from '@/lib/categories'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useNonExcludedTransactions, useAvailableMonths } from '@/store/selectors'
+import { useDefaultMonth } from '@/hooks/useDefaultMonth'
+import { useRollingBalance } from '@/hooks/useRollingBalance'
 import type { Transaction } from '@/types/transaction'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function computeDateFrom(range: DateRange): Date | null {
-  if (range === 'all') return null
-  const months = range === '3m' ? 3 : range === '6m' ? 6 : 12
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth() - months, now.getDate())
-}
+// ─── Local helpers ────────────────────────────────────────────────────────────
 
 function buildBarLabel(date: Date, multiYear: boolean): string {
   const mon = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date)
   if (!multiYear) return mon
   return `${mon} '${String(date.getFullYear()).slice(2)}`
-}
-
-function monthKeyToLabel(key: string): string {
-  if (!key) return '—'
-  const [y, m] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m, 1),
-  )
-}
-
-function signedFmt(delta: number): string {
-  const sign = delta >= 0 ? '+' : '−'
-  return `${sign}${formatCurrency(Math.abs(delta))}`
-}
-
-// ─── Skeleton bone ────────────────────────────────────────────────────────────
-
-function Bone({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded bg-bg-elevated ${className}`} />
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -57,40 +34,16 @@ export function DashboardPage() {
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
   const { rules } = useCategoryRules()
 
-  const { transactions, excludedIds, loadingState } = useStore(
-    useShallow((s) => ({
-      transactions: s.transactions,
-      excludedIds: s.excludedIds,
-      loadingState: s.loadingState,
-    })),
-  )
-
+  const loadingState = useStore((s) => s.loadingState)
   const isLoading = loadingState.status === 'idle' || loadingState.status === 'loading'
   const hasError = loadingState.status === 'error' && loadingState.errors.length > 0
 
   // ── All non-excluded transactions (unfiltered) ─────────────────────────────
-  const allActive = useMemo(
-    () => transactions.filter((tx) => !excludedIds.has(tx.id)),
-    [transactions, excludedIds],
-  )
-
-  // ── Sorted list of 'YYYY-MM' keys that have at least one transaction ────────
-  const availableMonths = useMemo(() => {
-    const set = new Set<string>()
-    for (const tx of allActive) {
-      const y = tx.date.getFullYear()
-      const m = tx.date.getMonth()
-      set.add(`${y}-${String(m).padStart(2, '0')}`)
-    }
-    return [...set].sort()
-  }, [allActive])
+  const allActive = useNonExcludedTransactions()
+  const availableMonths = useAvailableMonths(allActive)
 
   // ── Default to the most recent month once data is loaded ──────────────────
-  useEffect(() => {
-    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonthKey)) {
-      setSelectedMonthKey(availableMonths[availableMonths.length - 1])
-    }
-  }, [availableMonths, selectedMonthKey])
+  useDefaultMonth(availableMonths, selectedMonthKey, setSelectedMonthKey)
 
   // ── Transactions for the selected calendar month (KPIs + Top Expenses) ─────
   const monthTxns = useMemo(() => {
@@ -132,7 +85,7 @@ export function DashboardPage() {
   // ── Trend: selected month vs previous available month (skips empty months) ─
   const trend = useMemo(() => {
     const idx = availableMonths.indexOf(selectedMonthKey)
-    if (idx <= 0) return null // no previous month available
+    if (idx <= 0) return null
 
     const prevKey = availableMonths[idx - 1]
     const [prevY, prevM] = prevKey.split('-').map(Number)
@@ -155,9 +108,9 @@ export function DashboardPage() {
 
     return {
       prevMonthName,
-      income:   { delta: curInc - prevInc,                              formatted: signedFmt(curInc - prevInc) },
-      expenses: { delta: curExp - prevExp,                              formatted: signedFmt(curExp - prevExp) },
-      net:      { delta: (curInc - curExp) - (prevInc - prevExp),      formatted: signedFmt((curInc - curExp) - (prevInc - prevExp)) },
+      income:   { delta: curInc - prevInc,                         formatted: signedFmt(curInc - prevInc) },
+      expenses: { delta: curExp - prevExp,                         formatted: signedFmt(curExp - prevExp) },
+      net:      { delta: (curInc - curExp) - (prevInc - prevExp), formatted: signedFmt((curInc - curExp) - (prevInc - prevExp)) },
     }
   }, [availableMonths, selectedMonthKey, monthTxns, allActive])
 
@@ -185,33 +138,7 @@ export function DashboardPage() {
   }, [activeTxns])
 
   // ── Combined balance series (range-scoped, aggregated across IBANs) ────────
-  const { balanceSeries, balanceStartLabel, balanceEndLabel } = useMemo(() => {
-    const sorted = [...allActive].sort((a, b) => a.date.getTime() - b.date.getTime())
-    const latestByIban = new Map<string, number>()
-    const allPoints: { ts: number; balance: number }[] = []
-
-    for (const tx of sorted) {
-      latestByIban.set(tx.iban, tx.balanceAfter)
-      const combined = [...latestByIban.values()].reduce((s, b) => s + b, 0)
-      allPoints.push({ ts: tx.date.getTime(), balance: combined })
-    }
-
-    const points = dateFrom
-      ? allPoints.filter((p) => p.ts >= dateFrom.getTime())
-      : allPoints
-
-    const fmtPoint = (p: { ts: number; balance: number }) => {
-      const d = new Date(p.ts)
-      const label = new Intl.DateTimeFormat('nl-NL', { month: 'short', year: 'numeric' }).format(d)
-      return `${label}  ${formatCurrency(p.balance)}`
-    }
-
-    return {
-      balanceSeries:     points,
-      balanceStartLabel: points.length ? fmtPoint(points[0])                    : '—',
-      balanceEndLabel:   points.length ? fmtPoint(points[points.length - 1])    : '—',
-    }
-  }, [allActive, dateFrom])
+  const { balanceSeries, balanceStartLabel, balanceEndLabel } = useRollingBalance(allActive, dateFrom)
 
   // ── Top 5 counterparties by spend in the selected month ──────────────────
   const categoryNameById = useMemo(() => {
