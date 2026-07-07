@@ -1142,8 +1142,9 @@ export async function initKnowledgeBase(options: InitKnowledgeBaseOptions): Prom
 
   // Try cache-first restore
   if (_stateStore) {
-    _phase = 'restoring cache'
+    _phase = 'restoring-cache'
     const restored = await tryLoadVectorCache(embeddings)
+    // Cache hit: state fully restored, nothing more to do
     if (restored) return
   }
 
