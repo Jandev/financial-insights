@@ -2,53 +2,24 @@
  * useSavingsAccounts — CRUD hook for spaarpotje (savings account) configuration.
  *
  * Persistence:
- *   - Primary:  localStorage `financial-insights:spaarpotjes`
- *   - Secondary: debounced PUT /api/state/spaarpotjes (when Express is available)
+ *   - State lives in Zustand (`savingsAccountsState`)
+ *   - Every mutation fires a debounced PUT /api/state/spaarpotjes (500 ms window)
  *
  * After every mutation `recategorize()` is called so that all transactions
  * with matching counterpartyIbans are immediately re-labelled.
- *
- * Pattern mirrors `useCategoryRules`.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useStore } from '@/store'
 import { randomUUID } from '@/lib/uuid'
-import { createPersistFns } from '@/lib/persistence'
-import { useStorageHydration } from '@/hooks/useStorageHydration'
+import { debouncePut } from '@/lib/serverState'
 import type { SavingsAccount } from '@/types/savingsAccount'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
 
-// ─── Storage keys ─────────────────────────────────────────────────────────────
+// ─── Storage keys (kept for external consumers that still reference them) ─────
 
 export const STORAGE_KEY_SPAARPOTJES = 'financial-insights:spaarpotjes'
 export const STORAGE_KEY_TAG_OVERRIDES = 'financial-insights:tag-overrides'
-
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-
-export function readSavingsAccountsFromStorage(): SavingsAccount[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SPAARPOTJES)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as SavingsAccount[]) : []
-  } catch {
-    return []
-  }
-}
-
-export function readTagOverridesFromStorage(): Record<string, string[]> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_TAG_OVERRIDES)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, string[]>)
-      : {}
-  } catch {
-    return {}
-  }
-}
 
 function generateId(): string {
   return randomUUID()
@@ -77,35 +48,9 @@ export interface UseSavingsAccountsResult {
 }
 
 export function useSavingsAccounts(): UseSavingsAccountsResult {
-  const recategorize = useStore((s) => s.recategorize)
+  const accounts = useStore((s) => s.savingsAccountsState)
   const setSavingsAccountsState = useStore((s) => s.setSavingsAccountsState)
-  const setTagOverridesState = useStore((s) => s.setTagOverridesState)
-
-  const { persistAll } = useMemo(
-    () => createPersistFns<SavingsAccount[]>(STORAGE_KEY_SPAARPOTJES, 'spaarpotjes', 'accounts'),
-    [],
-  )
-
-  const [accounts, setAccounts] = useState<SavingsAccount[]>(() =>
-    readSavingsAccountsFromStorage(),
-  )
-
-  useEffect(() => {
-    setSavingsAccountsState(accounts)
-  }, [accounts, setSavingsAccountsState])
-
-  useEffect(() => {
-    setTagOverridesState(readTagOverridesFromStorage())
-  }, [setTagOverridesState])
-
-  // Re-read from localStorage when server hydration writes fresh data.
-  useStorageHydration(readSavingsAccountsFromStorage, (next) => {
-    setAccounts(next)
-    setSavingsAccountsState(next)
-  })
-
-  // Tag overrides are hydration-only today; keep store in sync for recategorize.
-  useStorageHydration(readTagOverridesFromStorage, setTagOverridesState)
+  const recategorize = useStore((s) => s.recategorize)
 
   const addAccount = useCallback(
     (partial: Omit<SavingsAccount, 'id' | 'color'> & { id?: string; color?: string }) => {
@@ -115,34 +60,31 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
         color: partial.color ?? nextColor(accounts),
       }
       const updated = [...accounts, account]
-      setAccounts(updated)
-      persistAll(updated)
       setSavingsAccountsState(updated)
+      debouncePut('spaarpotjes', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setSavingsAccountsState],
+    [accounts, setSavingsAccountsState, recategorize],
   )
 
   const updateAccount = useCallback(
     (id: string, patch: Partial<Omit<SavingsAccount, 'id'>>) => {
       const updated = accounts.map((a) => (a.id === id ? { ...a, ...patch } : a))
-      setAccounts(updated)
-      persistAll(updated)
       setSavingsAccountsState(updated)
+      debouncePut('spaarpotjes', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setSavingsAccountsState],
+    [accounts, setSavingsAccountsState, recategorize],
   )
 
   const deleteAccount = useCallback(
     (id: string) => {
       const updated = accounts.filter((a) => a.id !== id)
-      setAccounts(updated)
-      persistAll(updated)
       setSavingsAccountsState(updated)
+      debouncePut('spaarpotjes', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setSavingsAccountsState],
+    [accounts, setSavingsAccountsState, recategorize],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

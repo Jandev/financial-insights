@@ -26,6 +26,7 @@ export interface TransactionSlice {
   savingsAccountsState: SavingsAccount[]
   tagOverridesState: Record<string, string[]>
   personalAccountsState: PersonalAccount[]
+  defaultNameOverridesState: Record<string, string>
 
   // ── Actions ────────────────────────────────────────────────────────────────
   setTransactions: (transactions: Transaction[]) => void
@@ -38,6 +39,7 @@ export interface TransactionSlice {
   setSavingsAccountsState: (accounts: SavingsAccount[]) => void
   setTagOverridesState: (overrides: Record<string, string[]>) => void
   setPersonalAccountsState: (accounts: PersonalAccount[]) => void
+  setDefaultNameOverridesState: (overrides: Record<string, string>) => void
 
   /**
    * Re-categorize all transactions using current categorization inputs from
@@ -45,6 +47,9 @@ export interface TransactionSlice {
    * change so derived selectors recompute with fresh data.
    */
   recategorize: () => void
+
+  /** Reset all CRUD state (called after a full server-side state reset). */
+  resetCrudState: () => void
 }
 
 export const createTransactionSlice: StateCreator<
@@ -62,8 +67,12 @@ export const createTransactionSlice: StateCreator<
   savingsAccountsState: [],
   tagOverridesState: {},
   personalAccountsState: [],
+  defaultNameOverridesState: {},
 
-  setTransactions: (transactions) => set({ transactions }),
+  setTransactions: (transactions) => {
+    set({ transactions })
+    get().recategorize()
+  },
 
   setLoadingState: (loadingState) => set({ loadingState }),
 
@@ -82,6 +91,8 @@ export const createTransactionSlice: StateCreator<
   setTagOverridesState: (tagOverridesState) => set({ tagOverridesState }),
 
   setPersonalAccountsState: (personalAccountsState) => set({ personalAccountsState }),
+
+  setDefaultNameOverridesState: (defaultNameOverridesState) => set({ defaultNameOverridesState }),
 
   recategorize: () => {
     const {
@@ -105,4 +116,14 @@ export const createTransactionSlice: StateCreator<
 
     set({ transactions: recategorized })
   },
+
+  resetCrudState: () =>
+    set({
+      categorizationRules: [],
+      categoryOverridesState: {},
+      savingsAccountsState: [],
+      tagOverridesState: {},
+      personalAccountsState: [],
+      defaultNameOverridesState: {},
+    }),
 })

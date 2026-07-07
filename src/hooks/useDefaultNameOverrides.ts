@@ -2,21 +2,13 @@
  * useDefaultNameOverrides — issue #52.
  *
  * Manages user-defined display name overrides for the built-in DEFAULT_RULES.
- * The overrides are a simple Record<categoryId, customName> stored in:
- *   - localStorage under STORAGE_KEY_DEFAULT_NAME_OVERRIDES (fast, synchronous)
- *   - data/state/default-name-overrides.json via Express (durable across restarts)
- *
- * Hydration pattern mirrors useSavingsAccounts / useCategoryRules:
- *   useStateHydration writes to localStorage then fires 'state-hydrated',
- *   which this hook listens for to re-read the freshly written values.
+ * The overrides live in Zustand (`defaultNameOverridesState`) and are synced
+ * to the server via debounced PUT /api/state/default-name-overrides (500 ms).
  */
 
-import { useState, useCallback, useEffect } from 'react'
-import {
-  STORAGE_KEY_DEFAULT_NAME_OVERRIDES,
-  readDefaultNameOverrides,
-} from '@/lib/categories'
+import { useCallback } from 'react'
 import { debouncePut } from '@/lib/serverState'
+import { useStore } from '@/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +18,7 @@ export interface UseDefaultNameOverridesResult {
 
   /**
    * Set or update the display name for a single default category.
-   * Persists to localStorage and schedules a debounced PUT to the server.
+   * Persists to the server via debounced PUT.
    */
   setOverride: (id: string, name: string) => void
 
@@ -38,7 +30,7 @@ export interface UseDefaultNameOverridesResult {
 
   /**
    * Remove all display name overrides, restoring English defaults.
-   * Clears localStorage and schedules a debounced PUT with an empty object.
+   * Schedules a debounced PUT with an empty object.
    */
   resetOverrides: () => void
 }
@@ -46,48 +38,27 @@ export interface UseDefaultNameOverridesResult {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDefaultNameOverrides(): UseDefaultNameOverridesResult {
-  const [overrides, setOverrides] = useState<Record<string, string>>(
-    () => readDefaultNameOverrides(),
-  )
-
-  // Re-read from localStorage when server hydration writes fresh data
-  useEffect(() => {
-    const handler = () => {
-      setOverrides(readDefaultNameOverrides())
-    }
-    window.addEventListener('state-hydrated', handler)
-    return () => window.removeEventListener('state-hydrated', handler)
-  }, [])
+  const overrides = useStore((s) => s.defaultNameOverridesState)
+  const setDefaultNameOverridesState = useStore((s) => s.setDefaultNameOverridesState)
 
   const setOverride = useCallback((id: string, name: string) => {
-    setOverrides((prev) => {
-      const updated = { ...prev, [id]: name }
-      localStorage.setItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES, JSON.stringify(updated))
-      debouncePut('default-name-overrides', updated)
-      return updated
-    })
-  }, [])
+    const updated = { ...overrides, [id]: name }
+    setDefaultNameOverridesState(updated)
+    debouncePut('default-name-overrides', updated)
+  }, [overrides, setDefaultNameOverridesState])
 
   const removeOverride = useCallback((id: string) => {
-    setOverrides((prev) => {
-      if (!Object.prototype.hasOwnProperty.call(prev, id)) return prev
-      const updated = { ...prev }
-      delete updated[id]
-      if (Object.keys(updated).length === 0) {
-        localStorage.removeItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES)
-      } else {
-        localStorage.setItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES, JSON.stringify(updated))
-      }
-      debouncePut('default-name-overrides', updated)
-      return updated
-    })
-  }, [])
+    if (!Object.prototype.hasOwnProperty.call(overrides, id)) return
+    const updated = { ...overrides }
+    delete updated[id]
+    setDefaultNameOverridesState(updated)
+    debouncePut('default-name-overrides', updated)
+  }, [overrides, setDefaultNameOverridesState])
 
   const resetOverrides = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES)
+    setDefaultNameOverridesState({})
     debouncePut('default-name-overrides', {})
-    setOverrides({})
-  }, [])
+  }, [setDefaultNameOverridesState])
 
   return { overrides, setOverride, removeOverride, resetOverrides }
 }
