@@ -130,14 +130,13 @@ export function ChatInterface() {
               // Advisor ran runCategorization — re-fetch and merge into store.
               // Merge (not replace) so a period-scoped chat categorization does
               // not wipe out AI categories from a prior full-run via the button.
-              fetch('/api/state/categories')
+              fetch('/api/state/ai-categories')
                 .then((r) => r.ok ? r.json() : null)
                 .then((json: { data?: Record<string, { category: string; confidence: number; reasoning: string; source: string }> } | null) => {
                   if (!json) return
                   const raw = json.data ?? {}
                   const newEntries = Object.fromEntries(
                     Object.entries(raw)
-                      .filter(([, v]) => v.source === 'llm')
                       .map(([id, v]) => [id, { category: v.category, confidence: v.confidence, reasoning: v.reasoning, source: 'llm' as const }]),
                   )
                   if (Object.keys(newEntries).length > 0) {

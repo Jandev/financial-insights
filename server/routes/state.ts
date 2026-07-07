@@ -7,8 +7,10 @@
  * Endpoints:
  *   GET  /api/state/exclusions           — load excluded transaction IDs
  *   PUT  /api/state/exclusions           — persist excluded IDs
- *   GET  /api/state/categories           — load category assignments / overrides
- *   PUT  /api/state/categories           — persist category assignments
+ *   GET  /api/state/categories           — load manual category overrides (string values)
+ *   PUT  /api/state/categories           — persist manual category overrides
+ *   GET  /api/state/ai-categories        — load AI-assigned categories
+ *   PUT  /api/state/ai-categories        — persist AI-assigned categories (or clear with {})
  *   GET  /api/state/rules                — load custom category rules
  *   PUT  /api/state/rules                — persist custom rules
  *   GET  /api/state/spaarpotjes          — load savings goal accounts
@@ -107,6 +109,32 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
     }
 
     await store.write('categories', body as Record<string, string>)
+    res.json({ ok: true })
+  })
+
+  // ── AI Categories ──────────────────────────────────────────────────────────
+
+  /** GET /api/state/ai-categories */
+  router.get('/ai-categories', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<Record<string, unknown>>('ai-categories')
+    res.json(data ?? envelope({}))
+  })
+
+  /**
+   * PUT /api/state/ai-categories
+   *
+   * Accepts a plain object whose values are AICategoryResult objects.
+   * Send an empty object `{}` to clear (i.e. undo AI categorization).
+   */
+  router.put('/ai-categories', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      res.status(400).json({ error: 'Body must be Record<string, AICategoryResult>' })
+      return
+    }
+
+    await store.write('ai-categories', body as Record<string, unknown>)
     res.json({ ok: true })
   })
 

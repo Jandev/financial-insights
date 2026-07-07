@@ -42,8 +42,9 @@ export function createCategorizeRouter(stateStore: StateStore): Router {
         availableCategories,
       )
 
-      // Persist to StateStore
-      await stateStore.write<Record<string, unknown>>('categories', allResults).catch((err) => {
+      // Persist to StateStore — use a dedicated key so AI results never
+      // collide with the manual overrides stored under "categories".
+      await stateStore.write<Record<string, unknown>>('ai-categories', allResults).catch((err) => {
         console.error('[categorize] failed to persist to stateStore:', err)
       })
 

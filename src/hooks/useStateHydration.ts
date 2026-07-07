@@ -25,6 +25,7 @@ const POLL_INTERVAL_MS = 30_000
 /** Keys that, when changed on the server, require a recategorize() call. */
 const CATEGORIZATION_KEYS = new Set([
   'categories',
+  'ai-categories',
   'rules',
   'spaarpotjes',
   'tag-overrides',
@@ -127,18 +128,17 @@ export function useStateSync(): void {
             break
           }
           case 'categories': {
-            const map = data as Record<string, AICategoryResult | string>
-            const aiEntries = Object.entries(map).filter(([, v]) => typeof v === 'object' && v !== null && (v as AICategoryResult).source === 'llm')
-            setAiCategories(Object.fromEntries(aiEntries) as Record<string, AICategoryResult>)
+            // "categories" stores only manual string overrides (txId → categoryId).
+            const map = data as Record<string, unknown>
             const overrides: Record<string, string> = {}
             for (const [id, v] of Object.entries(map)) {
-              if (typeof v === 'string') {
-                overrides[id] = v
-              } else if (typeof v === 'object' && v !== null && (v as AICategoryResult).source === 'rule') {
-                overrides[id] = (v as AICategoryResult).category
-              }
+              if (typeof v === 'string') overrides[id] = v
             }
             setCategoryOverridesState(overrides)
+            break
+          }
+          case 'ai-categories': {
+            setAiCategories(data as Record<string, AICategoryResult>)
             break
           }
           case 'rules': {

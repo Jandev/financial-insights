@@ -13,6 +13,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import type { AICategoryResult } from '@/store/slices/llmTypes'
 import { readSSEStream } from '@/lib/sse'
+import { debouncePut } from '@/lib/serverState'
 
 interface ProgressState {
   processed: number
@@ -103,6 +104,7 @@ export function AICategorizeButton({ onComplete, period }: AICategorizeButtonPro
 
   function handleUndo() {
     clearAiCategories()
+    debouncePut('ai-categories', {})
     toast.success('Reverted to rule-based categorization')
   }
 
