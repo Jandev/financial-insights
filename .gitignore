@@ -357,6 +357,10 @@ data/state/insights/*.json
 
 .playwright-mcp
 
+# Playwright test artifacts
+playwright-report/
+test-results/
+
 # Vite / Node
 dist/
 dist-ssr/

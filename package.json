@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "start": "tsx server/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@langchain/core": "^1.2.1",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.1.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
