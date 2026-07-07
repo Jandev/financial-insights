@@ -1,9 +1,10 @@
 /**
- * Transaction sync hook — issue #17.
+ * Transaction sync hook — issue #17, #70.
  *
  * After transactions finish loading, pushes a lean snapshot to
  * POST /api/llm/transactions/sync so LLM services (#18-#21) can
- * access them server-side. Also re-syncs when AI categories change.
+ * access them server-side. Re-syncs when AI categories or categorization
+ * state (overrides, rules) change so the server store stays current.
  *
  * Option A: Before applying the deduplication guard, checks
  * GET /api/llm/transactions/count. If the server count doesn't match
@@ -38,17 +39,19 @@ export function useTransactionSync(): void {
   const transactions = useStore((s) => s.transactions)
   const loadingState = useStore((s) => s.loadingState)
   const aiCategories = useStore((s) => s.aiCategories)
-  const serverStateAvailable = useStore((s) => s.serverStateAvailable)
+  const categoryOverridesState = useStore((s) => s.categoryOverridesState)
+  const categorizationRules = useStore((s) => s.categorizationRules)
 
-  const lastSyncedRef = useRef<{ count: number; aiCount: number } | null>(null)
+  const lastSyncedRef = useRef<{ count: number; aiCount: number; overridesCount: number; rulesCount: number } | null>(null)
 
   useEffect(() => {
-    // Only sync when transactions are fully loaded and server is available
+    // Only sync when transactions are fully loaded
     if (loadingState.status !== 'success') return
     if (transactions.length === 0) return
-    if (!serverStateAvailable) return
 
     const aiCount = Object.keys(aiCategories).length
+    const overridesCount = Object.keys(categoryOverridesState).length
+    const rulesCount = categorizationRules.length
     const prev = lastSyncedRef.current
 
     async function syncIfNeeded(): Promise<void> {
@@ -60,8 +63,13 @@ export function useTransactionSync(): void {
           const res = await fetch('/api/llm/transactions/count')
           if (res.ok) {
             const { count: serverCount } = (await res.json()) as { count: number }
-            if (serverCount === transactions.length && prev.count === transactions.length && prev.aiCount === aiCount) {
-              // Server and local are in sync — nothing to do
+            if (
+              serverCount === transactions.length &&
+              prev.count === transactions.length &&
+              prev.aiCount === aiCount &&
+              prev.overridesCount === overridesCount &&
+              prev.rulesCount === rulesCount
+            ) {
               return
             }
           }
@@ -72,9 +80,14 @@ export function useTransactionSync(): void {
 
       // Avoid redundant syncs when we have no server count data (first mount
       // or count endpoint failed) and the ref already matches
-      if (prev?.count === transactions.length && prev?.aiCount === aiCount) return
+      if (
+        prev?.count === transactions.length &&
+        prev?.aiCount === aiCount &&
+        prev?.overridesCount === overridesCount &&
+        prev?.rulesCount === rulesCount
+      ) return
 
-      lastSyncedRef.current = { count: transactions.length, aiCount }
+      lastSyncedRef.current = { count: transactions.length, aiCount, overridesCount, rulesCount }
 
       const snapshots = transactions.map((tx) =>
         toSnapshot(tx, aiCategories[tx.id]?.category),
@@ -90,5 +103,5 @@ export function useTransactionSync(): void {
     }
 
     void syncIfNeeded()
-  }, [transactions, loadingState.status, aiCategories, serverStateAvailable])
+  }, [transactions, loadingState.status, aiCategories, categoryOverridesState, categorizationRules])
 }

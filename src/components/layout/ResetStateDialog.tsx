@@ -10,12 +10,6 @@ import { toast } from 'sonner'
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
-import { STORAGE_KEY_RULES, STORAGE_KEY_OVERRIDES } from '@/lib/categories'
-import { STORAGE_KEY_SPAARPOTJES, STORAGE_KEY_TAG_OVERRIDES } from '@/hooks/useSavingsAccounts'
-import { STORAGE_KEY_PERSONAL_ACCOUNTS } from '@/lib/personalAccounts'
-
-// localStorage key used by the Zustand persist middleware
-const ZUSTAND_STORAGE_KEY = 'financial-insights:store'
 
 interface ResetStateDialogProps {
   onClose: () => void
@@ -25,6 +19,7 @@ export function ResetStateDialog({ onClose }: ResetStateDialogProps) {
   const [loading, setLoading] = useState(false)
 
   const restoreAll = useStore((s) => s.restoreAll)
+  const resetCrudState = useStore((s) => s.resetCrudState)
   const recategorize = useStore((s) => s.recategorize)
   const transactions = useStore((s) => s.transactions)
 
@@ -35,34 +30,11 @@ export function ResetStateDialog({ onClose }: ResetStateDialogProps) {
       const res = await fetch('/api/state/reset', { method: 'POST' })
       if (!res.ok) throw new Error('Server reset failed')
 
-      // 2. Clear Zustand exclusions
+      // 2. Clear Zustand state — server is now empty, so reset all CRUD slices
       restoreAll()
+      resetCrudState()
 
-      // 3. Clear localStorage entries
-      localStorage.removeItem(STORAGE_KEY_RULES)
-      localStorage.removeItem(STORAGE_KEY_OVERRIDES)
-      localStorage.removeItem(STORAGE_KEY_SPAARPOTJES)
-      localStorage.removeItem(STORAGE_KEY_TAG_OVERRIDES)
-      localStorage.removeItem(STORAGE_KEY_PERSONAL_ACCOUNTS)
-      // Remove only the exclusions portion of the persisted Zustand store
-      // (we keep theme). Simplest: overwrite the stored value.
-      try {
-        const raw = localStorage.getItem(ZUSTAND_STORAGE_KEY)
-        if (raw) {
-          const parsed = JSON.parse(raw) as { state?: { excludedIds?: unknown } }
-          if (parsed?.state) {
-            parsed.state.excludedIds = []
-            localStorage.setItem(ZUSTAND_STORAGE_KEY, JSON.stringify(parsed))
-          }
-        }
-      } catch {
-        // Ignore — worst case the persist middleware rewrites on next mutation
-      }
-
-      // 4. Notify hooks to re-read (now-empty) localStorage
-      window.dispatchEvent(new CustomEvent('state-hydrated'))
-
-      // 5. Re-categorize with rule engine
+      // 3. Re-categorize with (now-empty) rule engine
       recategorize()
 
       onClose()

@@ -1,8 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { loadAllTransactions } from '@/lib/csvLoader'
-import { readRulesFromStorage, readOverridesFromStorage } from '@/lib/categories'
-import { readPersonalAccountsFromStorage } from '@/lib/personalAccounts'
-import { readSavingsAccountsFromStorage } from '@/hooks/useSavingsAccounts'
 import { useStore } from '@/store'
 import type { LoadingState } from '@/types/loader'
 
@@ -15,9 +12,8 @@ import type { LoadingState } from '@/types/loader'
  * The `hasStartedForKey` ref prevents StrictMode double-execution from
  * triggering two concurrent loads for the same key.
  *
- * In dev (Vite glob), a reload re-parses the same compile-time file set and
- * applies fresh categorization rules. In prod (Express), `/api/transactions`
- * re-reads the filesystem so newly added CSV files are picked up.
+ * Categorization state is read from Zustand at load time. Any rules/overrides
+ * that arrive later via useStateSync will trigger recategorize() automatically.
  *
  * @returns `{ loadingState }` — same object as `useStore().loadingState`
  */
@@ -25,13 +21,13 @@ export function useTransactionLoader() {
   const {
     loadingState,
     csvLoadKey,
+    categorizationRules,
+    categoryOverridesState,
+    savingsAccountsState,
+    personalAccountsState,
     setTransactions,
     setLoadingState,
     logFile,
-    setCategorizationRules,
-    setCategoryOverridesState,
-    setSavingsAccountsState,
-    setPersonalAccountsState,
   } = useStore()
 
   // Tracks which csvLoadKey was last started — prevents double-fire in StrictMode
@@ -50,22 +46,12 @@ export function useTransactionLoader() {
       errors: [],
     })
 
-    const rules = readRulesFromStorage()
-    const overrides = readOverridesFromStorage()
-    const savingsAccounts = readSavingsAccountsFromStorage()
-    const personalAccounts = readPersonalAccountsFromStorage()
-
-    setCategorizationRules(rules)
-    setCategoryOverridesState(overrides)
-    setSavingsAccountsState(savingsAccounts)
-    setPersonalAccountsState(personalAccounts)
-
     loadAllTransactions(
       {
-        rules,
-        overrides,
-        personalAccounts,
-        savingsAccounts,
+        rules: categorizationRules,
+        overrides: categoryOverridesState,
+        personalAccounts: personalAccountsState,
+        savingsAccounts: savingsAccountsState,
       },
       (progress: LoadingState) => setLoadingState(progress),
       (entry) => logFile(entry),
@@ -81,7 +67,7 @@ export function useTransactionLoader() {
           errors: [err instanceof Error ? err.message : String(err)],
         })
       })
-  }, [csvLoadKey, setTransactions, setLoadingState, logFile, setCategorizationRules, setCategoryOverridesState, setSavingsAccountsState, setPersonalAccountsState])
+  }, [csvLoadKey, setTransactions, setLoadingState, logFile, categorizationRules, categoryOverridesState, savingsAccountsState, personalAccountsState])
 
   return { loadingState }
 }

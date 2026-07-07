@@ -2,26 +2,17 @@
  * usePersonalAccounts — CRUD hook for personal account IBAN configuration.
  *
  * Persistence:
- *   - Primary:  localStorage `financial-insights:personal-accounts`
- *   - Secondary: debounced PUT /api/state/personal-accounts (when Express is available)
+ *   - State lives in Zustand (`personalAccountsState`)
+ *   - Every mutation fires a debounced PUT /api/state/personal-accounts (500 ms window)
  *
  * After every mutation `recategorize()` is called so personal-account fallback
  * can be re-applied for transactions still uncategorized after rule matching.
- *
- * Pattern mirrors `useSavingsAccounts`.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useStore } from '@/store'
-import { createPersistFns } from '@/lib/persistence'
-import { useStorageHydration } from '@/hooks/useStorageHydration'
-import {
-  STORAGE_KEY_PERSONAL_ACCOUNTS,
-  readPersonalAccountsFromStorage,
-} from '@/lib/personalAccounts'
+import { debouncePut } from '@/lib/serverState'
 import type { PersonalAccount } from '@/types/personalAccount'
-
-// ─── Persistence helpers ──────────────────────────────────────────────────────
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -40,37 +31,18 @@ export interface UsePersonalAccountsResult {
 }
 
 export function usePersonalAccounts(): UsePersonalAccountsResult {
-  const recategorize = useStore((s) => s.recategorize)
+  const accounts = useStore((s) => s.personalAccountsState)
   const setPersonalAccountsState = useStore((s) => s.setPersonalAccountsState)
-
-  const { persistAll } = useMemo(
-    () => createPersistFns<PersonalAccount[]>(STORAGE_KEY_PERSONAL_ACCOUNTS, 'personal-accounts', 'accounts'),
-    [],
-  )
-
-  const [accounts, setAccounts] = useState<PersonalAccount[]>(() =>
-    readPersonalAccountsFromStorage(),
-  )
-
-  useEffect(() => {
-    setPersonalAccountsState(accounts)
-  }, [accounts, setPersonalAccountsState])
-
-  // Re-read from localStorage when server hydration writes fresh data.
-  useStorageHydration(readPersonalAccountsFromStorage, (next) => {
-    setAccounts(next)
-    setPersonalAccountsState(next)
-  })
+  const recategorize = useStore((s) => s.recategorize)
 
   const addAccount = useCallback(
     (account: Omit<PersonalAccount, 'autoDetected'>) => {
       const updated = [...accounts, { ...account, autoDetected: false }]
-      setAccounts(updated)
-      persistAll(updated)
       setPersonalAccountsState(updated)
+      debouncePut('personal-accounts', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setPersonalAccountsState],
+    [accounts, setPersonalAccountsState, recategorize],
   )
 
   const updateAccount = useCallback(
@@ -78,12 +50,11 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
       const updated = accounts.map((a) =>
         a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
       )
-      setAccounts(updated)
-      persistAll(updated)
       setPersonalAccountsState(updated)
+      debouncePut('personal-accounts', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setPersonalAccountsState],
+    [accounts, setPersonalAccountsState, recategorize],
   )
 
   const deleteAccount = useCallback(
@@ -91,12 +62,11 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
       const updated = accounts.filter(
         (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
       )
-      setAccounts(updated)
-      persistAll(updated)
       setPersonalAccountsState(updated)
+      debouncePut('personal-accounts', { accounts: updated })
       recategorize()
     },
-    [accounts, persistAll, recategorize, setPersonalAccountsState],
+    [accounts, setPersonalAccountsState, recategorize],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

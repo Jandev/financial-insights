@@ -26,13 +26,12 @@ export type StoreState =
   ChatSlice
 
 // ─── Persisted shape ──────────────────────────────────────────────────────────
-// Only these fields survive a browser refresh. Everything else resets to defaults.
+// Only these fields survive a browser refresh. Everything else resets to
+// defaults and is re-hydrated from the server on mount by useStateSync.
 
 interface PersistedShape {
-  excludedIds: string[]        // Set → Array for JSON serialization
   theme: 'light' | 'dark'
   dismissedFindingIds: string[] // Set → Array for JSON serialization
-  insightCache: Record<string, string>
 }
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -54,14 +53,11 @@ export const useStore = create<StoreState>()(
     {
       name: 'financial-insights:store',
 
-      // Only persist exclusions and theme — transactions are loaded fresh each
-      // session; filters reset intentionally on refresh. Server state fields are
-      // runtime-only (determined on startup via /api/state/summary fetch).
+      // Only persist UI preferences — all app state is re-hydrated from the
+      // server on mount (issue #70).
       partialize: (state): PersistedShape => ({
-        excludedIds: [...state.excludedIds],
         theme: state.theme,
         dismissedFindingIds: [...state.dismissedFindingIds],
-        insightCache: state.insightCache,
       }),
 
       // Rehydrate: convert serialized Arrays back to Sets and re-apply theme class
@@ -69,10 +65,8 @@ export const useStore = create<StoreState>()(
         const p = persisted as PersistedShape
         const rehydrated: StoreState = {
           ...current,
-          excludedIds: new Set(p.excludedIds ?? []),
           theme: p.theme ?? 'light',
           dismissedFindingIds: new Set(p.dismissedFindingIds ?? []),
-          insightCache: p.insightCache ?? {},
         }
         return rehydrated
       },

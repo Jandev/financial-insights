@@ -8,13 +8,12 @@ import { CategoriesPage } from '@/pages/CategoriesPage'
 import { InsightsPage } from '@/pages/InsightsPage'
 import { AiAdvisorPage } from '@/pages/AiAdvisorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { useStateHydration } from '@/hooks/useStateHydration'
+import { useStateSync } from '@/hooks/useStateHydration'
 import { ChatSlideIn } from '@/components/ai/ChatSlideIn'
 
 function AppRoutes() {
-  // Hydrate Zustand + localStorage from server on mount (issue #22).
-  // Falls back silently to localStorage when Express is not available.
-  useStateHydration()
+  // Sync Zustand from server on mount and every 30s (issue #70).
+  useStateSync()
 
   return (
     <Routes>

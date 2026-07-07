@@ -17,15 +17,12 @@ interface LLMGateProps {
 
 export function LLMGate({ children, unavailableMessage }: LLMGateProps) {
   const llmAvailable = useStore((s) => s.llmAvailable)
-  const serverStateAvailable = useStore((s) => s.serverStateAvailable)
 
   if (llmAvailable) return <>{children}</>
 
   const msg =
     unavailableMessage ??
-    (serverStateAvailable
-      ? 'Configure AI credentials in .env to use AI features'
-      : 'Start the server with npm run dev:full to use AI features')
+    'Configure AI credentials in .env to use AI features'
 
   return (
     <Tooltip content={msg}>

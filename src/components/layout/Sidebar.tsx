@@ -37,7 +37,7 @@ const navItems = [
  */
 export function Sidebar() {
   const [debugOpen, setDebugOpen] = useState(false)
-  const { fileLog, serverStateAvailable } = useStore()
+  const { fileLog, stateLastSynced } = useStore()
 
   return (
     <aside className="glass-sidebar fixed bottom-0 left-0 top-12 z-40 hidden sm:flex w-[220px] flex-col">
@@ -137,7 +137,7 @@ export function Sidebar() {
       <div className="px-3 py-2.5 space-y-2">
         {/* Storage mode indicator */}
         <div className="flex items-center gap-1.5">
-          {serverStateAvailable ? (
+          {stateLastSynced ? (
             <>
               <Cloud className="h-3 w-3 shrink-0 text-green-500" strokeWidth={1.75} />
               <span className="text-[10px] text-text-muted">Server state</span>
@@ -145,7 +145,7 @@ export function Sidebar() {
           ) : (
             <>
               <HardDrive className="h-3 w-3 shrink-0 text-text-muted" strokeWidth={1.75} />
-              <span className="text-[10px] text-text-muted">Local storage</span>
+              <span className="text-[10px] text-text-muted">Syncing…</span>
             </>
           )}
         </div>

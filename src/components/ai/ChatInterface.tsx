@@ -35,7 +35,6 @@ export function ChatInterface() {
   const updateLastAssistantMessage = useStore((s) => s.updateLastAssistantMessage)
   const clearChat = useStore((s) => s.clearChat)
   const llmAvailable = useStore((s) => s.llmAvailable)
-  const serverStateAvailable = useStore((s) => s.serverStateAvailable)
   const aiCategories = useStore((s) => s.aiCategories)
   const setAiCategories = useStore((s) => s.setAiCategories)
   const aiCategoriesRef = useRef(aiCategories)
@@ -182,18 +181,9 @@ export function ChatInterface() {
         <Bot className="h-10 w-10 text-text-muted" strokeWidth={1} />
         <p className="text-sm text-text-secondary font-medium">AI Advisor unavailable</p>
         <p className="text-[12px] text-text-muted max-w-xs">
-          {serverStateAvailable ? (
-            <>
-              Configure AI credentials in{' '}
-              <code className="font-mono text-accent">.env</code> to use the conversational advisor.
-            </>
-          ) : (
-            <>
-              Start the server with{' '}
-              <code className="font-mono text-accent">npm run dev:full</code> to use the conversational advisor.
-            </>
-          )}
-        </p>
+            Configure AI credentials in{' '}
+            <code className="font-mono text-accent">.env</code> to use the conversational advisor.
+          </p>
       </div>
     )
   }
