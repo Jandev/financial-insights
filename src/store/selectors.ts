@@ -1,12 +1,57 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './useStore'
-import { DEFAULT_RULES, isIncomeTransaction, isExpenseTransaction, type CategoryRule } from '@/lib/categories'
+import {
+  DEFAULT_RULES,
+  isIncomeTransaction,
+  isExpenseTransaction,
+  FALLBACK_CATEGORY_COLOR,
+  FALLBACK_CATEGORY_ICON,
+  type CategoryRule,
+} from '@/lib/categories'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { formatMonth } from '@/lib/utils'
 import type { Transaction } from '@/types/transaction'
 import type { Filters } from './slices/filterSlice'
 import type { SavingsAccount } from '@/types/savingsAccount'
+
+// ─── Non-excluded transactions ────────────────────────────────────────────────
+
+/**
+ * All transactions that are not in the excluded-IDs set.
+ * No filter-bar filters applied — this is raw active data used by pages
+ * for month-level KPIs and rolling balance (which are factual, not filtered).
+ */
+export function useNonExcludedTransactions(): Transaction[] {
+  const { transactions, excludedIds } = useStore(
+    useShallow((s) => ({ transactions: s.transactions, excludedIds: s.excludedIds })),
+  )
+  return useMemo(
+    () => transactions.filter((tx) => !excludedIds.has(tx.id)),
+    [transactions, excludedIds],
+  )
+}
+
+// ─── Available months ─────────────────────────────────────────────────────────
+
+/**
+ * Sorted list of zero-based 'YYYY-MM' keys for which at least one non-excluded
+ * transaction exists. Accepts an optional pre-computed transaction list to avoid
+ * a second store read when the caller already has it.
+ */
+export function useAvailableMonths(txns?: Transaction[]): string[] {
+  const storeResult = useNonExcludedTransactions()
+  const source = txns ?? storeResult
+  return useMemo(() => {
+    const set = new Set<string>()
+    for (const tx of source) {
+      const y = tx.date.getFullYear()
+      const m = tx.date.getMonth()
+      set.add(`${y}-${String(m).padStart(2, '0')}`)
+    }
+    return [...set].sort()
+  }, [source])
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -238,8 +283,8 @@ export function useCategoryTotals(): CategoryTotal[] {
       return {
         categoryId,
         name: m?.name ?? categoryId,
-        color: m?.color ?? '#8E8E93',
-        icon: m?.icon ?? 'HelpCircle',
+        color: m?.color ?? FALLBACK_CATEGORY_COLOR,
+        icon: m?.icon ?? FALLBACK_CATEGORY_ICON,
         total,
         count,
         percentage: grandTotal > 0 ? (total / grandTotal) * 100 : 0,

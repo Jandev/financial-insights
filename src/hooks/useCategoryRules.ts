@@ -13,6 +13,7 @@ import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
 import { createPersistFns } from '@/lib/persistence'
 import { useStorageHydration } from '@/hooks/useStorageHydration'
 import { useStore } from '@/store'
+import { randomUUID } from '@/lib/uuid'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ import { useStore } from '@/store'
 const RULES_UPDATED_EVENT = 'category-rules-changed'
 
 function generateId(): string {
-  return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  return `custom-${randomUUID()}`
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

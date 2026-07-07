@@ -88,6 +88,14 @@ export interface CategorizationInputs {
   personalAccounts: PersonalAccount[]
 }
 
+// ─── Fallback category display constants ─────────────────────────────────────
+
+/** Hex color used when no rule matches a category id */
+export const FALLBACK_CATEGORY_COLOR = '#8E8E93'
+
+/** Lucide icon name used when no rule matches a category id */
+export const FALLBACK_CATEGORY_ICON = 'HelpCircle'
+
 // ─── Spaarpotje category helpers ─────────────────────────────────────────────
 
 /**
