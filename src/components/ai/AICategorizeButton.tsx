@@ -22,9 +22,11 @@ interface ProgressState {
 interface AICategorizeButtonProps {
   /** Called after successful categorization so the parent can refresh */
   onComplete?: () => void
+  /** ISO YYYY-MM period to restrict categorization to. Omit for all transactions. */
+  period?: string
 }
 
-export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
+export function AICategorizeButton({ onComplete, period }: AICategorizeButtonProps) {
   const [progress, setProgress] = useState<ProgressState | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -54,7 +56,7 @@ export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: 'all' }),
+          body: JSON.stringify({ period: period ?? 'all' }),
           signal: abortRef.current.signal,
         },
         {
