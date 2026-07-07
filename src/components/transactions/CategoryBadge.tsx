@@ -4,11 +4,16 @@ import { Search, Pencil, Check, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
+import { useCategoryRuleList } from '@/store/selectors'
 import { useStore } from '@/store'
+import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
 import type { Transaction } from '@/types/transaction'
 
+/** Minimal transaction fields required by the picker and badge components. */
+export type TxCategorizable = Pick<Transaction, 'id' | 'category' | 'counterpartyName'>
+
 interface CategoryPickerDropdownProps {
-  tx: Transaction
+  tx: TxCategorizable
   onClose: () => void
 }
 
@@ -88,6 +93,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
   function handleAllFromCounterparty() {
     if (!pendingCategory) return
     addRule({
+      kind: 'condition',
       name: pendingCategory.name,
       color: pendingCategory.color,
       icon: pendingCategory.icon,
@@ -231,7 +237,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
 // ─── CategoryBadge (exported, used in table rows) ─────────────────────────────
 
 interface CategoryBadgeProps {
-  tx: Transaction
+  tx: TxCategorizable
   /** Overrides map from the parent table — used to show the override indicator. */
   overrides: Record<string, string>
 }
@@ -243,7 +249,7 @@ interface CategoryBadgeProps {
  */
 export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
   const [open, setOpen] = useState(false)
-  const { rules } = useCategoryRules()
+  const rules = useCategoryRuleList()
   const aiCategories = useStore((s) => s.aiCategories)
 
   // Resolve name + color from the full ruleset (covers custom rules too)
@@ -251,7 +257,7 @@ export function CategoryBadge({ tx, overrides }: CategoryBadgeProps) {
   const hasOverride = Boolean(overrides[tx.id])
   const isAICategorized = aiCategories[tx.id]?.source === 'llm'
 
-  const color = meta?.color ?? '#8E8E93'
+  const color = meta?.color ?? FALLBACK_CATEGORY_COLOR
   const name = meta?.name ?? tx.category ?? '—'
 
   return (

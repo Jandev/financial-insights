@@ -6,9 +6,14 @@ import {
   migrateCustomRule,
   applyDefaultNameOverrides,
   type CategoryRule,
+  type CategoryRuleDraft,
 } from '@/lib/categories'
 import { debouncePut } from '@/lib/serverState'
 import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
+import { createPersistFns } from '@/lib/persistence'
+import { useStorageHydration } from '@/hooks/useStorageHydration'
+import { useStore } from '@/store'
+import { randomUUID } from '@/lib/uuid'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,16 +28,7 @@ import { useDefaultNameOverrides } from '@/hooks/useDefaultNameOverrides'
 const RULES_UPDATED_EVENT = 'category-rules-changed'
 
 function generateId(): string {
-  return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
-
-function persistLocal(rules: CategoryRule[]): void {
-  localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules))
-}
-
-function persistAll(rules: CategoryRule[]): void {
-  persistLocal(rules)
-  debouncePut('rules', { rules })
+  return `custom-${randomUUID()}`
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -51,10 +47,10 @@ export interface UseCategoryRulesResult {
   customRules: CategoryRule[]
 
   /** Add a new custom rule. An `id` is auto-generated if not supplied. */
-  addRule: (rule: Omit<CategoryRule, 'id'> & { id?: string }) => void
+  addRule: (rule: CategoryRuleDraft & { id?: string }) => void
 
-  /** Partially update an existing custom rule by id. */
-  updateRule: (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => void
+  /** Replace an existing custom rule by id. */
+  updateRule: (id: string, rule: CategoryRuleDraft) => void
 
   /** Remove a custom rule by id. Default rules are not affected. */
   deleteRule: (id: string) => void
@@ -93,16 +89,22 @@ export interface UseCategoryRulesResult {
  *   const category = categorize(tx, rules)
  */
 export function useCategoryRules(): UseCategoryRulesResult {
-  const [customRules, setCustomRules] = useState<CategoryRule[]>(() => {
-    // Auto-migrate any legacy pattern-based rules to the new condition format
+  const setCategorizationRules = useStore((s) => s.setCategorizationRules)
+
+  const { persistAll } = useMemo(
+    () => createPersistFns<CategoryRule[]>(STORAGE_KEY_RULES, 'rules', 'rules'),
+    [],
+  )
+
+  const readMigratedRules = useCallback(() => {
     const stored = readRulesFromStorage()
     const migrated = stored.map(migrateCustomRule)
-    // If migration changed anything, persist the upgraded rules to both
-    // localStorage and the server so they stay in sync from the start.
     const didMigrate = migrated.some((r, i) => r !== stored[i])
     if (didMigrate) persistAll(migrated)
     return migrated
-  })
+  }, [persistAll])
+
+  const [customRules, setCustomRules] = useState<CategoryRule[]>(() => readMigratedRules())
 
   const {
     overrides: defaultNameOverrides,
@@ -111,23 +113,23 @@ export function useCategoryRules(): UseCategoryRulesResult {
     resetOverrides: resetDefaultNameOverrides,
   } = useDefaultNameOverrides()
 
-  // Re-read from localStorage when server hydration writes fresh data, OR when
-  // another useCategoryRules() instance mutates the ruleset.
+  // Re-read from localStorage when server hydration writes fresh data.
+  useStorageHydration(readMigratedRules, setCustomRules)
+
+  // Re-read from localStorage when another useCategoryRules() instance mutates.
   useEffect(() => {
     const handler = () => {
-      const stored = readRulesFromStorage()
-      const migrated = stored.map(migrateCustomRule)
-      const didMigrate = migrated.some((r, i) => r !== stored[i])
-      if (didMigrate) persistAll(migrated)
-      setCustomRules(migrated)
+      setCustomRules(readMigratedRules())
     }
-    window.addEventListener('state-hydrated', handler)
     window.addEventListener(RULES_UPDATED_EVENT, handler)
     return () => {
-      window.removeEventListener('state-hydrated', handler)
       window.removeEventListener(RULES_UPDATED_EVENT, handler)
     }
-  }, [])
+  }, [readMigratedRules])
+
+  useEffect(() => {
+    setCategorizationRules(customRules)
+  }, [customRules, setCategorizationRules])
 
   // Memoised so that useEffect comparisons in consumers stay stable
   const rules = useMemo<CategoryRule[]>(
@@ -136,39 +138,55 @@ export function useCategoryRules(): UseCategoryRulesResult {
   )
 
   const addRule = useCallback(
-    (rule: Omit<CategoryRule, 'id'> & { id?: string }) => {
-      const newRule: CategoryRule = { ...rule, id: rule.id ?? generateId() }
+    (rule: CategoryRuleDraft & { id?: string }) => {
+      const nextId = rule.id ?? generateId()
+      const newRule: CategoryRule =
+        rule.kind === 'condition'
+          ? { ...rule, id: nextId }
+          : { ...rule, id: nextId }
+
       const updated = [...readRulesFromStorage(), newRule]
       persistAll(updated)
+      setCategorizationRules(updated)
       // Notify all useCategoryRules instances so they re-read from localStorage.
       // React 18 automatic batching groups these setCustomRules calls with the
       // subsequent recategorize() Zustand update into one render, ensuring
       // CategoryBadge sees the new rule name and the new tx.category together.
       window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
     },
-    [],
+    [persistAll, setCategorizationRules],
   )
 
   const updateRule = useCallback(
-    (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => {
-      const updated = readRulesFromStorage().map((r) => (r.id === id ? { ...r, ...patch } : r))
+    (id: string, rule: CategoryRuleDraft) => {
+      const updated = readRulesFromStorage().map((existing) => {
+        if (existing.id !== id) return existing
+        return rule.kind === 'condition'
+          ? { ...rule, id }
+          : { ...rule, id }
+      })
+
       persistAll(updated)
+      setCategorizationRules(updated)
       window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
     },
-    [],
+    [persistAll, setCategorizationRules],
   )
 
   const deleteRule = useCallback((id: string) => {
     const updated = readRulesFromStorage().filter((r) => r.id !== id)
     persistAll(updated)
+    setCategorizationRules(updated)
     window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
-  }, [])
+  }, [persistAll, setCategorizationRules])
 
   const resetToDefaults = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY_RULES)
     debouncePut('rules', { rules: [] })
     setCustomRules([])
-  }, [])
+    setCategorizationRules([])
+    window.dispatchEvent(new CustomEvent(RULES_UPDATED_EVENT))
+  }, [setCategorizationRules])
 
   return { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults, defaultNameOverrides, setDefaultNameOverride, removeDefaultNameOverride, resetDefaultNameOverrides }
 }

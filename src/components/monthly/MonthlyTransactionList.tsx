@@ -7,6 +7,10 @@ import { ExpandableTransactionText } from '@/components/transactions/ExpandableT
 import { useCategoryOverrides } from '@/hooks/useCategoryOverrides'
 import type { Transaction } from '@/types/transaction'
 
+// ─── Narrow prop type ─────────────────────────────────────────────────────────
+
+type TxListItem = Pick<Transaction, 'id' | 'date' | 'counterpartyName' | 'description' | 'amount' | 'category'>
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ActiveFilter {
@@ -16,7 +20,7 @@ export interface ActiveFilter {
 }
 
 interface Props {
-  transactions: Transaction[]
+  transactions: TxListItem[]
   excludedIds: Set<string>
   activeFilter: ActiveFilter | null
 }

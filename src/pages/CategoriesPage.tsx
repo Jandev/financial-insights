@@ -1,10 +1,13 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Card } from '@/components/ui/Card'
-import { cn } from '@/lib/utils'
+import { cn, monthKeyToLabel } from '@/lib/utils'
 import { useActiveTransactions } from '@/store/selectors'
+import { useAvailableMonths } from '@/store/selectors'
+import { useDefaultMonth } from '@/hooks/useDefaultMonth'
 import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useStore } from '@/store'
-import type { CategoryRule } from '@/lib/categories'
+import type { CategoryRule, CategoryRuleDraft } from '@/lib/categories'
+import { FALLBACK_CATEGORY_COLOR, FALLBACK_CATEGORY_ICON } from '@/lib/categories'
 import { CategoryBarChart } from '@/components/categories/CategoryBarChart'
 import { DrilldownPanel } from '@/components/categories/DrilldownPanel'
 import { RuleEditor } from '@/components/categories/RuleEditor'
@@ -12,14 +15,6 @@ import { AICategorizeButton } from '@/components/ai/AICategorizeButton'
 import { MonthNavigator } from '@/components/ui/MonthNavigator'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function monthKeyToLabel(key: string): string {
-  if (!key) return ''
-  const [y, m] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
-    new Date(y, m, 1),
-  )
-}
 
 interface GroupedCategoryTotal {
   groupKey: string
@@ -54,8 +49,8 @@ function buildCategoryTotals(
       groupKey,
       categoryIds: [tx.category],
       name: groupKey,
-      color: m?.color ?? '#8E8E93',
-      icon: m?.icon ?? 'HelpCircle',
+      color: m?.color ?? FALLBACK_CATEGORY_COLOR,
+      icon: m?.icon ?? FALLBACK_CATEGORY_ICON,
       total: Math.abs(tx.amount),
       count: 1,
     })
@@ -87,22 +82,10 @@ export function CategoriesPage() {
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('')
 
   // Derive sorted list of months (YYYY-MM, 0-indexed) that have data
-  const months = useMemo(() => {
-    const keys = new Set(
-      active.map((tx) => {
-        const d = new Date(tx.date)
-        return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
-      }),
-    )
-    return [...keys].sort()
-  }, [active])
+  const months = useAvailableMonths(active)
 
   // Default to most recent month with data; re-sync if transactions load later
-  useEffect(() => {
-    if (months.length > 0 && (!selectedMonthKey || !months.includes(selectedMonthKey))) {
-      setSelectedMonthKey(months[months.length - 1])
-    }
-  }, [months, selectedMonthKey])
+  useDefaultMonth(months, selectedMonthKey, setSelectedMonthKey)
 
   // Filter active transactions to the selected month
   const monthTransactions = useMemo(() => {
@@ -155,7 +138,7 @@ export function CategoriesPage() {
 
   // ── Rule mutations (always followed by recategorize) ──────────────────────
   const handleAddRule = useCallback(
-    (draft: Omit<CategoryRule, 'id'>) => {
+    (draft: CategoryRuleDraft) => {
       addRule(draft)
       // recategorize will fire via the useEffect above
     },
@@ -163,8 +146,8 @@ export function CategoriesPage() {
   )
 
   const handleUpdateRule = useCallback(
-    (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => {
-      updateRule(id, patch)
+    (id: string, draft: CategoryRuleDraft) => {
+      updateRule(id, draft)
     },
     [updateRule],
   )

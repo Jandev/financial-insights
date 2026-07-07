@@ -3,7 +3,10 @@ import { Pencil, Trash2, Plus, AlertTriangle, Check, ChevronRight, RotateCcw, X 
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_RULES,
+  isConditionRule,
+  isLegacyRule,
   type CategoryRule,
+  type CategoryRuleDraft,
   type Condition,
 } from '@/lib/categories'
 import { ConditionBuilder } from './ConditionBuilder'
@@ -71,24 +74,27 @@ function ConditionChip({
 
 interface RuleFormProps {
   initial?: CategoryRule
-  onSave: (draft: Omit<CategoryRule, 'id'>) => void
+  onSave: (draft: CategoryRuleDraft) => void
   onCancel: () => void
 }
 
 function RuleForm({ initial, onSave, onCancel }: RuleFormProps) {
+  const initialConditionRule = initial && isConditionRule(initial) ? initial : null
+
   const [name, setName] = useState(initial?.name ?? '')
   const [color, setColor] = useState(initial?.color ?? MACOS_PALETTE[7])
   const [conditions, setConditions] = useState<Condition[]>(
-    initial?.conditions ?? [],
+    initialConditionRule?.conditions ?? [],
   )
   const [combinator, setCombinator] = useState<'and' | 'or'>(
-    initial?.combinator ?? 'and',
+    initialConditionRule?.combinator ?? 'and',
   )
 
   function handleSave() {
     const trimmed = name.trim()
     if (!trimmed) return
     onSave({
+      kind: 'condition',
       name: trimmed,
       color,
       icon: initial?.icon ?? 'Tag',
@@ -238,8 +244,11 @@ interface CustomRuleRowProps {
 function CustomRuleRow({ rule, onEdit, onDelete }: CustomRuleRowProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const all = rule.conditions ?? []
-  const combinator = rule.combinator ?? 'and'
+  const conditionRule = isConditionRule(rule) ? rule : null
+  const legacyRule = isLegacyRule(rule) ? rule : null
+
+  const all = conditionRule?.conditions ?? []
+  const combinator = conditionRule?.combinator ?? 'and'
   const hasMore = all.length > CONDITIONS_PREVIEW
   const visible = expanded ? all : all.slice(0, CONDITIONS_PREVIEW)
 
@@ -253,37 +262,50 @@ function CustomRuleRow({ rule, onEdit, onDelete }: CustomRuleRowProps) {
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-text-primary">{rule.name}</p>
 
-        {all.length === 0 ? (
+        {conditionRule && all.length === 0 ? (
           <p className="text-[10px] text-text-muted mt-0.5 italic">No conditions</p>
         ) : (
-          <div className="mt-1 space-y-0.5">
-            {visible.map((c, idx) => (
-              <ConditionChip
-                key={c.id}
-                condition={c}
-                combinator={combinator}
-                isFirst={idx === 0}
-              />
-            ))}
-            {!expanded && hasMore && (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="text-[10px] text-accent hover:text-accent/80 cursor-pointer transition-colors"
-              >
-                +{all.length - CONDITIONS_PREVIEW} more
-              </button>
+          <>
+            {conditionRule && (
+              <div className="mt-1 space-y-0.5">
+                {visible.map((c, idx) => (
+                  <ConditionChip
+                    key={c.id}
+                    condition={c}
+                    combinator={combinator}
+                    isFirst={idx === 0}
+                  />
+                ))}
+                {!expanded && hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(true)}
+                    className="text-[10px] text-accent hover:text-accent/80 cursor-pointer transition-colors"
+                  >
+                    +{all.length - CONDITIONS_PREVIEW} more
+                  </button>
+                )}
+                {expanded && hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(false)}
+                    className="text-[10px] text-text-muted hover:text-text-secondary cursor-pointer transition-colors"
+                  >
+                    show less
+                  </button>
+                )}
+              </div>
             )}
-            {expanded && hasMore && (
-              <button
-                type="button"
-                onClick={() => setExpanded(false)}
-                className="text-[10px] text-text-muted hover:text-text-secondary cursor-pointer transition-colors"
-              >
-                show less
-              </button>
+            {legacyRule && (
+              <div className="mt-1">
+                {legacyRule.patterns.length > 0 ? (
+                  <PatternChips patterns={legacyRule.patterns} />
+                ) : (
+                  <p className="text-[10px] text-text-muted mt-0.5 italic">Legacy rule</p>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -335,10 +357,11 @@ function DefaultRuleRow({ rule, displayName, isOverridden, onRename, onResetName
   const [draftName, setDraftName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const hasPatterns   = (rule.patterns?.length ?? 0) > 0
-  const hasCodes      = (rule.transactionCodes?.length ?? 0) > 0
-  const hasDirection  = rule.isCredit !== undefined
-  const hasAmount     = rule.amountMin !== undefined
+  const legacyRule = isLegacyRule(rule) ? rule : null
+  const hasPatterns = legacyRule !== null && legacyRule.patterns.length > 0
+  const hasCodes = legacyRule !== null && (legacyRule.transactionCodes?.length ?? 0) > 0
+  const hasDirection = legacyRule !== null && legacyRule.isCredit !== undefined
+  const hasAmount = legacyRule !== null && (legacyRule.amountMin !== undefined || legacyRule.amountMax !== undefined)
   const hasAnyCriteria = hasPatterns || hasCodes || hasDirection || hasAmount
 
   function startEditing() {
@@ -482,7 +505,7 @@ function DefaultRuleRow({ rule, displayName, isOverridden, onRename, onResetName
               <p className="text-[10px] text-text-muted mb-1">
                 Counterparty / description contains any of:
               </p>
-              <PatternChips patterns={rule.patterns!} />
+              <PatternChips patterns={legacyRule?.patterns ?? []} />
             </div>
           )}
 
@@ -495,14 +518,17 @@ function DefaultRuleRow({ rule, displayName, isOverridden, onRename, onResetName
               <div className="flex flex-wrap gap-1">
                 {hasDirection && (
                   <ConstraintBadge>
-                    Direction is {rule.isCredit ? 'credit' : 'debit'}
+                    Direction is {legacyRule?.isCredit ? 'credit' : 'debit'}
                   </ConstraintBadge>
                 )}
-                {hasCodes && rule.transactionCodes!.map((code) => (
+                {hasCodes && legacyRule?.transactionCodes?.map((code) => (
                   <ConstraintBadge key={code}>Code: {code}</ConstraintBadge>
                 ))}
-                {hasAmount && (
-                  <ConstraintBadge>Amount ≥ €{rule.amountMin}</ConstraintBadge>
+                {legacyRule?.amountMin !== undefined && (
+                  <ConstraintBadge>Amount ≥ €{legacyRule.amountMin}</ConstraintBadge>
+                )}
+                {legacyRule?.amountMax !== undefined && (
+                  <ConstraintBadge>Amount ≤ €{legacyRule.amountMax}</ConstraintBadge>
                 )}
               </div>
             </div>
@@ -517,8 +543,8 @@ function DefaultRuleRow({ rule, displayName, isOverridden, onRename, onResetName
 
 interface RuleEditorProps {
   customRules: CategoryRule[]
-  onAdd: (draft: Omit<CategoryRule, 'id'>) => void
-  onUpdate: (id: string, patch: Partial<Omit<CategoryRule, 'id'>>) => void
+  onAdd: (draft: CategoryRuleDraft) => void
+  onUpdate: (id: string, patch: CategoryRuleDraft) => void
   onDelete: (id: string) => void
   onResetToDefaults: () => void
   /** Current map of categoryId → custom display name for built-in defaults */
@@ -583,7 +609,7 @@ export function RuleEditor({
   const [confirmingReset, setConfirmingReset] = useState(false)
 
   const handleAdd = useCallback(
-    (draft: Omit<CategoryRule, 'id'>) => {
+    (draft: CategoryRuleDraft) => {
       onAdd(draft)
       setIsAdding(false)
     },
@@ -591,7 +617,7 @@ export function RuleEditor({
   )
 
   const handleUpdate = useCallback(
-    (id: string, draft: Omit<CategoryRule, 'id'>) => {
+    (id: string, draft: CategoryRuleDraft) => {
       onUpdate(id, draft)
       setEditingId(null)
     },

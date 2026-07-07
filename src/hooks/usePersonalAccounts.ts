@@ -11,21 +11,17 @@
  * Pattern mirrors `useSavingsAccounts`.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useStore } from '@/store'
-import { debouncePut } from '@/lib/serverState'
+import { createPersistFns } from '@/lib/persistence'
+import { useStorageHydration } from '@/hooks/useStorageHydration'
 import {
+  STORAGE_KEY_PERSONAL_ACCOUNTS,
   readPersonalAccountsFromStorage,
-  writePersonalAccountsToStorage,
 } from '@/lib/personalAccounts'
 import type { PersonalAccount } from '@/types/personalAccount'
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
-
-function persistAll(accounts: PersonalAccount[]): void {
-  writePersonalAccountsToStorage(accounts)
-  debouncePut('personal-accounts', { accounts })
-}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -45,58 +41,62 @@ export interface UsePersonalAccountsResult {
 
 export function usePersonalAccounts(): UsePersonalAccountsResult {
   const recategorize = useStore((s) => s.recategorize)
+  const setPersonalAccountsState = useStore((s) => s.setPersonalAccountsState)
+
+  const { persistAll } = useMemo(
+    () => createPersistFns<PersonalAccount[]>(STORAGE_KEY_PERSONAL_ACCOUNTS, 'personal-accounts', 'accounts'),
+    [],
+  )
 
   const [accounts, setAccounts] = useState<PersonalAccount[]>(() =>
     readPersonalAccountsFromStorage(),
   )
 
-  // Re-read from localStorage when server hydration writes fresh data.
   useEffect(() => {
-    const handler = () => {
-      setAccounts(readPersonalAccountsFromStorage())
-    }
-    window.addEventListener('state-hydrated', handler)
-    return () => window.removeEventListener('state-hydrated', handler)
-  }, [])
+    setPersonalAccountsState(accounts)
+  }, [accounts, setPersonalAccountsState])
+
+  // Re-read from localStorage when server hydration writes fresh data.
+  useStorageHydration(readPersonalAccountsFromStorage, (next) => {
+    setAccounts(next)
+    setPersonalAccountsState(next)
+  })
 
   const addAccount = useCallback(
     (account: Omit<PersonalAccount, 'autoDetected'>) => {
-      setAccounts((prev) => {
-        const updated = [...prev, { ...account, autoDetected: false }]
-        persistAll(updated)
-        return updated
-      })
+      const updated = [...accounts, { ...account, autoDetected: false }]
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [recategorize],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   const updateAccount = useCallback(
     (iban: string, patch: Partial<Omit<PersonalAccount, 'iban' | 'autoDetected'>>) => {
-      setAccounts((prev) => {
-        const updated = prev.map((a) =>
-          a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
-        )
-        persistAll(updated)
-        return updated
-      })
+      const updated = accounts.map((a) =>
+        a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
+      )
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [recategorize],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   const deleteAccount = useCallback(
     (iban: string) => {
-      setAccounts((prev) => {
-        const updated = prev.filter(
-          (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
-        )
-        persistAll(updated)
-        return updated
-      })
+      const updated = accounts.filter(
+        (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
+      )
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [recategorize],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/Button'
 import { LLMGate } from './LLMGate'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
-import type { AICategoryResult } from '@/store/slices/llmSlice'
+import type { AICategoryResult } from '@/store/slices/llmTypes'
+import { readSSEStream } from '@/lib/sse'
 
 interface ProgressState {
   processed: number
@@ -41,59 +42,52 @@ export function AICategorizeButton({ onComplete }: AICategorizeButtonProps) {
     const allResults: Record<string, AICategoryResult> = {}
 
     try {
-      const res = await fetch('/api/llm/categorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: 'all' }),
-        signal: abortRef.current.signal,
-      })
-
-      if (!res.ok || !res.body) throw new Error('Failed to start categorization')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6)) as {
-            type: string
-            processed?: number
-            total?: number
-            results?: Array<{ id: string; category: string; confidence: number; reasoning: string }>
-            totalProcessed?: number
-          }
-
-          if (data.type === 'progress') {
-            setProgress({ processed: data.processed ?? 0, total: data.total ?? 0 })
-            if (data.results) {
-              for (const r of data.results) {
-                allResults[r.id] = {
-                  category: r.category,
-                  confidence: r.confidence,
-                  reasoning: r.reasoning,
-                  source: 'llm',
+      await readSSEStream<{
+        type: string
+        processed?: number
+        total?: number
+        results?: Array<{ id: string; category: string; confidence: number; reasoning: string }>
+        totalProcessed?: number
+        message?: string
+      }>(
+        '/api/llm/categorize',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: 'all' }),
+          signal: abortRef.current.signal,
+        },
+        {
+          onData: (data) => {
+            if (data.type === 'progress') {
+              setProgress({ processed: data.processed ?? 0, total: data.total ?? 0 })
+              if (data.results) {
+                for (const r of data.results) {
+                  allResults[r.id] = {
+                    category: r.category,
+                    confidence: r.confidence,
+                    reasoning: r.reasoning,
+                    source: 'llm',
+                  }
                 }
               }
+              return
             }
-          } else if (data.type === 'done') {
-            setAiCategories(allResults)
-            toast.success(`AI categorized ${data.totalProcessed ?? 0} transactions`)
-            onComplete?.()
-          } else if (data.type === 'error') {
-            toast.error((data as { type: string; message?: string }).message ?? 'AI categorization failed.')
-            console.error('[AICategorize] server error event:', (data as { type: string; message?: string }).message)
-          }
-        }
-      }
+
+            if (data.type === 'done') {
+              setAiCategories(allResults)
+              toast.success(`AI categorized ${data.totalProcessed ?? 0} transactions`)
+              onComplete?.()
+              return
+            }
+
+            if (data.type === 'error') {
+              toast.error(data.message ?? 'AI categorization failed.')
+              console.error('[AICategorize] server error event:', data.message)
+            }
+          },
+        },
+      )
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         toast.error('AI categorization failed. Check server logs.')

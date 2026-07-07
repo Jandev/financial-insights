@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
 import {
+  buildCategorizedTransactions,
   categorize,
   categorizeWithPersonalFallback,
   DEFAULT_RULES,
@@ -116,6 +117,7 @@ describe('categorize — transactionCodes filter', () => {
 
   it('custom rule with transactionCodes fires only for matching code', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'direct-debit',
       name: 'Direct Debit',
       color: '#000',
@@ -142,6 +144,7 @@ describe('categorize — isCredit filter', () => {
 
   it('custom isCredit:false rule only fires for negative amounts', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'expense-only',
       name: 'Expense Only',
       color: '#000',
@@ -161,6 +164,7 @@ describe('categorize — isCredit filter', () => {
 describe('categorize — amountMin filter', () => {
   it('matches when |amount| >= amountMin', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'large',
       name: 'Large',
       color: '#000',
@@ -176,6 +180,7 @@ describe('categorize — amountMin filter', () => {
 
   it('uses absolute amount (works for credits too)', () => {
     const rule: CategoryRule = {
+      kind: 'legacy',
       id: 'big-income',
       name: 'Big Income',
       color: '#000',
@@ -194,6 +199,7 @@ describe('categorize — first-match-wins', () => {
   it('returns the first matching rule, not subsequent ones', () => {
     const rules: CategoryRule[] = [
       {
+        kind: 'legacy',
         id: 'first',
         name: 'First',
         color: '#000',
@@ -201,6 +207,7 @@ describe('categorize — first-match-wins', () => {
         patterns: ['albert heijn'],
       },
       {
+        kind: 'legacy',
         id: 'second',
         name: 'Second',
         color: '#000',
@@ -215,6 +222,7 @@ describe('categorize — first-match-wins', () => {
   it('custom rules prepended via mergeRules take priority over defaults', () => {
     const custom: CategoryRule[] = [
       {
+        kind: 'legacy',
         id: 'my-rule',
         name: 'My Rule',
         color: '#000',
@@ -256,7 +264,7 @@ describe('categorize — no patterns, only transactionCodes', () => {
 describe('mergeRules', () => {
   it('prepends custom rules before DEFAULT_RULES', () => {
     const custom: CategoryRule[] = [
-      { id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
+      { kind: 'legacy', id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
     ]
     const merged = mergeRules(custom)
     expect(merged[0].id).toBe('x')
@@ -290,10 +298,42 @@ describe('readRulesFromStorage', () => {
 
   it('returns parsed rules when valid', () => {
     const rules: CategoryRule[] = [
-      { id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
+      { kind: 'legacy', id: 'x', name: 'X', color: '#000', icon: 'X', patterns: ['foo'] },
     ]
     localStorage.setItem('financial-insights:category-rules', JSON.stringify(rules))
     expect(readRulesFromStorage()).toEqual(rules)
+    localStorage.clear()
+  })
+
+  it('coerces legacy persisted rules without kind', () => {
+    localStorage.setItem(
+      'financial-insights:category-rules',
+      JSON.stringify([
+        {
+          id: 'legacy-no-kind',
+          name: 'Legacy',
+          color: '#000',
+          icon: 'X',
+          patterns: ['foo'],
+        },
+      ]),
+    )
+
+    expect(readRulesFromStorage()).toEqual([
+      {
+        kind: 'legacy',
+        id: 'legacy-no-kind',
+        name: 'Legacy',
+        color: '#000',
+        icon: 'X',
+        patterns: ['foo'],
+        transactionCodes: undefined,
+        amountMin: undefined,
+        amountMax: undefined,
+        isCredit: undefined,
+      },
+    ])
+
     localStorage.clear()
   })
 })
@@ -322,6 +362,16 @@ describe('readOverridesFromStorage', () => {
     expect(readOverridesFromStorage()).toEqual(overrides)
     localStorage.clear()
   })
+
+  it('coerces own-account-transfer override to internal-transfer', () => {
+    localStorage.setItem(
+      'financial-insights:category-overrides',
+      JSON.stringify({ 'rabobank-001': 'own-account-transfer' }),
+    )
+
+    expect(readOverridesFromStorage()).toEqual({ 'rabobank-001': 'internal-transfer' })
+    localStorage.clear()
+  })
 })
 
 // ─── INTERNAL_TRANSFER_RULE_IDS — manual-only regime ─────────────────────────
@@ -330,6 +380,10 @@ describe('INTERNAL_TRANSFER_RULE_IDS filter', () => {
   it('contains internal-transfer and own-account-transfer', () => {
     expect(INTERNAL_TRANSFER_RULE_IDS.has('internal-transfer')).toBe(true)
     expect(INTERNAL_TRANSFER_RULE_IDS.has('own-account-transfer')).toBe(true)
+  })
+
+  it('default rules no longer include duplicate own-account-transfer', () => {
+    expect(DEFAULT_RULES.some((rule) => rule.id === 'own-account-transfer')).toBe(false)
   })
 
   it('tb falls to uncategorized when fallback rules are filtered out', () => {
@@ -350,6 +404,7 @@ describe('categorizeWithPersonalFallback', () => {
     })
     const customRules: CategoryRule[] = [
       {
+        kind: 'condition',
         id: 'custom-pocket-money',
         name: 'Pocket Money',
         color: '#000',
@@ -393,6 +448,70 @@ describe('categorizeWithPersonalFallback', () => {
 
     const category = categorizeWithPersonalFallback(tx, rules, [makeAccount()])
     expect(category).toBe('internal-transfer')
+  })
+})
+
+describe('buildCategorizedTransactions', () => {
+  it('applies spaarpotje match before manual overrides', () => {
+    const tx = makeTx({
+      id: 'tx-1',
+      category: 'uncategorized',
+      amount: -50,
+      counterpartyIban: 'NL00RABO0000001234',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: { 'tx-1': 'groceries' },
+      savingsAccounts: [{ id: 'pot-1', name: 'Holiday', iban: 'NL00RABO0000001234', color: '#00C7BE' }],
+      tagOverrides: {},
+      personalAccounts: [],
+    })
+
+    expect(result[0].category).toBe('spaarpotje')
+    expect(result[0].tags).toEqual(['Holiday'])
+  })
+
+  it('applies manual override before rule engine', () => {
+    const tx = makeTx({
+      id: 'tx-2',
+      category: 'uncategorized',
+      counterpartyName: 'Albert Heijn',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: { 'tx-2': 'rent' },
+      savingsAccounts: [],
+      tagOverrides: { 'tx-2': ['manual-tag'] },
+      personalAccounts: [],
+    })
+
+    expect(result[0].category).toBe('rent')
+    expect(result[0].tags).toEqual(['manual-tag'])
+  })
+
+  it('falls back to internal-transfer when no rule matches and personal account matches', () => {
+    const tx = makeTx({
+      id: 'tx-3',
+      category: 'uncategorized',
+      transactionCode: 'tb',
+      counterpartyName: 'Unknown',
+      counterpartyIban: 'NL00RABO0000000002',
+      tags: [],
+    })
+
+    const result = buildCategorizedTransactions([tx], {
+      rules: [],
+      overrides: {},
+      savingsAccounts: [],
+      tagOverrides: {},
+      personalAccounts: [makeAccount()],
+    })
+
+    expect(result[0].category).toBe('internal-transfer')
   })
 })
 

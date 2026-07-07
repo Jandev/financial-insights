@@ -9,7 +9,7 @@
  *   5. Danger Zone      — Reset all settings (moved here from Sidebar)
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Plus, Trash2, Check, X, RefreshCw, AlertTriangle,
   PiggyBank, ArrowLeftRight, ToggleLeft, ToggleRight, Brain,
@@ -25,251 +25,11 @@ import { usePersonalAccounts } from '@/hooks/usePersonalAccounts'
 import { useKnowledgeSources } from '@/hooks/useKnowledgeSources'
 import type { KnowledgeSource, CrawlPolicy, SourceProgress } from '@/hooks/useKnowledgeSources'
 import { ResetStateDialog } from '@/components/layout/ResetStateDialog'
+import { SpaarpotjeForm } from '@/components/settings/SpaarpotjeForm'
+import { PersonalAccountForm } from '@/components/settings/PersonalAccountForm'
+import { ACCOUNT_TYPE_LABELS } from '@/components/settings/accountTypeLabels'
 import { SPAARPOTJE_COLORS } from '@/types/savingsAccount'
-import type { SavingsAccount } from '@/types/savingsAccount'
 import type { PersonalAccount } from '@/types/personalAccount'
-
-// ─── IBAN formatting helper ───────────────────────────────────────────────────
-
-function normalizeIban(value: string): string {
-  return value.replace(/\s+/g, '').toUpperCase()
-}
-
-// ─── Color swatch picker ──────────────────────────────────────────────────────
-
-interface ColorPickerProps {
-  value: string
-  onChange: (color: string) => void
-}
-
-function ColorPicker({ value, onChange }: ColorPickerProps) {
-  return (
-    <div className="flex gap-1.5 flex-wrap">
-      {SPAARPOTJE_COLORS.map((color) => (
-        <button
-          key={color}
-          type="button"
-          title={color}
-          onClick={() => onChange(color)}
-          className={cn(
-            'h-6 w-6 rounded-full transition-all duration-150',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
-            value === color ? 'ring-2 ring-offset-1 ring-offset-bg-elevated ring-white/50 scale-110' : 'opacity-70 hover:opacity-100 hover:scale-105',
-          )}
-          style={{ backgroundColor: color }}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ─── Inline form for add / edit ───────────────────────────────────────────────
-
-interface SpaarpotjeFormProps {
-  initial?: Partial<SavingsAccount>
-  onSave: (values: { name: string; iban: string; color: string }) => void
-  onCancel: () => void
-  firstAvailableColor: string
-}
-
-function SpaarpotjeForm({ initial, onSave, onCancel, firstAvailableColor }: SpaarpotjeFormProps) {
-  const [name, setName] = useState(initial?.name ?? '')
-  const [iban, setIban] = useState(initial?.iban ?? '')
-  const [color, setColor] = useState(initial?.color ?? firstAvailableColor)
-  const [errors, setErrors] = useState<{ name?: string; iban?: string }>({})
-
-  function validate(): boolean {
-    const next: typeof errors = {}
-    if (!name.trim()) next.name = 'Name is required'
-    const normalized = normalizeIban(iban)
-    if (!normalized) {
-      next.iban = 'IBAN is required'
-    } else if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalized)) {
-      next.iban = 'Invalid IBAN format'
-    }
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!validate()) return
-    onSave({ name: name.trim(), iban: normalizeIban(iban), color })
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-[10px] border border-border bg-bg-elevated p-4 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        {/* Name */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-text-secondary">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Vakantie"
-            className={cn(
-              'w-full rounded-[6px] border px-2.5 py-1.5 text-[13px]',
-              'bg-bg-base text-text-primary placeholder-text-muted',
-              'focus:outline-none focus:ring-1 focus:ring-accent',
-              errors.name ? 'border-expense' : 'border-border',
-            )}
-          />
-          {errors.name && <p className="text-[11px] text-expense">{errors.name}</p>}
-        </div>
-
-        {/* IBAN */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-text-secondary">Counterparty IBAN</label>
-          <input
-            type="text"
-            value={iban}
-            onChange={(e) => setIban(e.target.value)}
-            placeholder="NL00RABO0000000000"
-            className={cn(
-              'w-full rounded-[6px] border px-2.5 py-1.5 text-[13px] font-mono',
-              'bg-bg-base text-text-primary placeholder-text-muted',
-              'focus:outline-none focus:ring-1 focus:ring-accent',
-              errors.iban ? 'border-expense' : 'border-border',
-            )}
-          />
-          {errors.iban && <p className="text-[11px] text-expense">{errors.iban}</p>}
-        </div>
-      </div>
-
-      {/* Color */}
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-text-secondary">Color</label>
-        <ColorPicker value={color} onChange={setColor} />
-      </div>
-
-      {/* Actions */}
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          <X className="h-3.5 w-3.5" />
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" size="sm">
-          <Check className="h-3.5 w-3.5" />
-          {initial?.id ? 'Save changes' : 'Add spaarpotje'}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-// ─── Personal Account form (add) ──────────────────────────────────────────────
-
-const ACCOUNT_TYPE_LABELS: Record<PersonalAccount['type'], string> = {
-  payment: 'Payment',
-  savings: 'Savings',
-  joint: 'Joint',
-  other: 'Other',
-}
-
-interface PersonalAccountFormProps {
-  onSave: (values: { iban: string; label: string; type: PersonalAccount['type']; enabled: boolean }) => void
-  onCancel: () => void
-}
-
-function PersonalAccountForm({ onSave, onCancel }: PersonalAccountFormProps) {
-  const [iban, setIban] = useState('')
-  const [label, setLabel] = useState('')
-  const [type, setType] = useState<PersonalAccount['type']>('payment')
-  const [errors, setErrors] = useState<{ iban?: string }>({})
-
-  function validate(): boolean {
-    const next: typeof errors = {}
-    const normalized = normalizeIban(iban)
-    if (!normalized) {
-      next.iban = 'IBAN is required'
-    } else if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalized)) {
-      next.iban = 'Invalid IBAN format'
-    }
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!validate()) return
-    onSave({ iban: normalizeIban(iban), label: label.trim(), type, enabled: true })
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-[10px] border border-border bg-bg-elevated p-4 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        {/* IBAN */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-text-secondary">IBAN</label>
-          <input
-            type="text"
-            value={iban}
-            onChange={(e) => setIban(e.target.value)}
-            placeholder="NL00RABO0000000000"
-            className={cn(
-              'w-full rounded-[6px] border px-2.5 py-1.5 text-[13px] font-mono',
-              'bg-bg-base text-text-primary placeholder-text-muted',
-              'focus:outline-none focus:ring-1 focus:ring-accent',
-              errors.iban ? 'border-expense' : 'border-border',
-            )}
-          />
-          {errors.iban && <p className="text-[11px] text-expense">{errors.iban}</p>}
-        </div>
-
-        {/* Label */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-text-secondary">Label (optional)</label>
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. Boodschappenrekening"
-            className={cn(
-              'w-full rounded-[6px] border border-border px-2.5 py-1.5 text-[13px]',
-              'bg-bg-base text-text-primary placeholder-text-muted',
-              'focus:outline-none focus:ring-1 focus:ring-accent',
-            )}
-          />
-        </div>
-      </div>
-
-      {/* Type */}
-      <div className="space-y-1">
-        <label className="text-[11px] font-medium text-text-secondary">Account type</label>
-        <div className="flex gap-1.5 flex-wrap">
-          {(Object.keys(ACCOUNT_TYPE_LABELS) as PersonalAccount['type'][]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              className={cn(
-                'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors',
-                type === t
-                  ? 'bg-accent text-white'
-                  : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
-              )}
-            >
-              {ACCOUNT_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          <X className="h-3.5 w-3.5" />
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" size="sm">
-          <Check className="h-3.5 w-3.5" />
-          Add account
-        </Button>
-      </div>
-    </form>
-  )
-}
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
@@ -683,6 +443,7 @@ export function SettingsPage() {
 
   // CSV refresh
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshAwaitingLoadStart, setRefreshAwaitingLoadStart] = useState(false)
   const isDev = import.meta.env.DEV
 
   // The first color not already used by an existing account
@@ -783,20 +544,30 @@ export function SettingsPage() {
 
   async function handleCsvRefresh() {
     setRefreshing(true)
-    try {
-      bumpCsvLoadKey()
-      toast.success(
-        isDev
-          ? 'Re-parsing loaded CSV files with current rules…'
-          : 'Re-scanning CSV files from disk…',
-        { duration: 3000 },
-      )
-    } finally {
-      // Keep spinner until loading completes (loadingState watcher would be better,
-      // but a short delay is sufficient UX here)
-      setTimeout(() => setRefreshing(false), 1500)
-    }
+    setRefreshAwaitingLoadStart(true)
+    bumpCsvLoadKey()
+    toast.success(
+      isDev
+        ? 'Re-parsing loaded CSV files with current rules…'
+        : 'Re-scanning CSV files from disk…',
+      { duration: 3000 },
+    )
   }
+
+  useEffect(() => {
+    if (!refreshing) return
+
+    if (refreshAwaitingLoadStart) {
+      if (loadingState.status === 'loading') {
+        setRefreshAwaitingLoadStart(false)
+      }
+      return
+    }
+
+    if (loadingState.status !== 'loading') {
+      setRefreshing(false)
+    }
+  }, [refreshing, refreshAwaitingLoadStart, loadingState.status])
 
   const isLoading = loadingState.status === 'loading' || refreshing
 
