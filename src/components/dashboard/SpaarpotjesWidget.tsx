@@ -26,8 +26,8 @@ export function SpaarpotjesWidget() {
         <h2 className="text-sm font-semibold text-text-primary">Spaarpotjes</h2>
       </div>
 
-      {/* One card per pot */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      {/* One card per pot — auto-fit so fewer than 4 pots don't leave blank columns */}
+      <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
         {balances.map(({ account, balance, depositCount, withdrawalCount }) => (
           <Card key={account.id} padding="md" className="flex flex-col gap-1 min-w-0">
             {/* Title row with color dot */}

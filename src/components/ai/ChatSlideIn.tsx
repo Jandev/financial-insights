@@ -49,6 +49,7 @@ export function ChatSlideIn() {
           'border-l border-t border-border',
           'flex flex-col shadow-2xl',
           'transition-transform duration-300 ease-in-out',
+          // On mobile, offset by mobile nav height (4rem = 64px = h-16 MobileNav) to fully hide below fold
           open ? 'translate-y-0' : 'translate-y-[calc(100%+4rem)] sm:translate-y-full',
         )}
       >
