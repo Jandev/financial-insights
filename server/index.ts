@@ -16,6 +16,10 @@
  *   PUT  /api/state/categories           — persist category overrides
  *   GET  /api/state/rules                — load custom category rules
  *   PUT  /api/state/rules                — persist custom rules
+ *   GET  /api/state/spaarpotjes          — load savings goal accounts
+ *   PUT  /api/state/spaarpotjes          — persist savings goal accounts
+ *   GET  /api/state/personal-accounts    — load personal account IBANs
+ *   PUT  /api/state/personal-accounts    — persist personal account IBANs
  *   GET  /api/state/anomalies            — load anomaly findings
  *   PUT  /api/state/anomalies            — persist anomaly findings
  *   GET  /api/state/insights/:period     — load insight for a period

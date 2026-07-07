@@ -13,6 +13,10 @@ import {
   readSavingsAccountsFromStorage,
   readTagOverridesFromStorage,
 } from '@/hooks/useSavingsAccounts'
+import {
+  STORAGE_KEY_PERSONAL_ACCOUNTS,
+  readPersonalAccountsFromStorage,
+} from '@/lib/personalAccounts'
 import type { AICategoryResult } from '@/store/slices/llmTypes'
 
 export function useHydrateCategorizationState() {
@@ -21,6 +25,7 @@ export function useHydrateCategorizationState() {
   const setCategorizationRules = useStore((s) => s.setCategorizationRules)
   const setSavingsAccountsState = useStore((s) => s.setSavingsAccountsState)
   const setTagOverridesState = useStore((s) => s.setTagOverridesState)
+  const setPersonalAccountsState = useStore((s) => s.setPersonalAccountsState)
   const setAiCategories = useStore((s) => s.setAiCategories)
 
   return useCallback(async (): Promise<void> => {
@@ -30,6 +35,7 @@ export function useHydrateCategorizationState() {
       rulesResult,
       spaarpotjesResult,
       tagOverridesResult,
+      personalAccountsResult,
       defaultNameOverridesResult,
     ] = await Promise.allSettled([
       fetch('/api/state/exclusions').then((r) => (r.ok ? r.json() : null)),
@@ -37,6 +43,7 @@ export function useHydrateCategorizationState() {
       fetch('/api/state/rules').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/spaarpotjes').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/tag-overrides').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/state/personal-accounts').then((r) => (r.ok ? r.json() : null)),
       fetch('/api/state/default-name-overrides').then((r) => (r.ok ? r.json() : null)),
     ])
 
@@ -82,9 +89,15 @@ export function useHydrateCategorizationState() {
       setTagOverridesState(readTagOverridesFromStorage())
     }
 
+    if (personalAccountsResult.status === 'fulfilled' && personalAccountsResult.value !== null) {
+      const accounts: unknown[] = personalAccountsResult.value?.data?.accounts ?? []
+      localStorage.setItem(STORAGE_KEY_PERSONAL_ACCOUNTS, JSON.stringify(accounts))
+      setPersonalAccountsState(readPersonalAccountsFromStorage())
+    }
+
     if (defaultNameOverridesResult.status === 'fulfilled' && defaultNameOverridesResult.value !== null) {
       const nameOverrides: Record<string, string> = defaultNameOverridesResult.value?.data ?? {}
       localStorage.setItem(STORAGE_KEY_DEFAULT_NAME_OVERRIDES, JSON.stringify(nameOverrides))
     }
-  }, [hydrateExclusions, setCategoryOverridesState, setCategorizationRules, setSavingsAccountsState, setTagOverridesState, setAiCategories])
+  }, [hydrateExclusions, setCategoryOverridesState, setCategorizationRules, setSavingsAccountsState, setTagOverridesState, setPersonalAccountsState, setAiCategories])
 }

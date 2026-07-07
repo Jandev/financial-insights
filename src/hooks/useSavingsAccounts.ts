@@ -109,46 +109,40 @@ export function useSavingsAccounts(): UseSavingsAccountsResult {
 
   const addAccount = useCallback(
     (partial: Omit<SavingsAccount, 'id' | 'color'> & { id?: string; color?: string }) => {
-      setAccounts((prev) => {
-        const account: SavingsAccount = {
-          ...partial,
-          id: partial.id ?? generateId(),
-          color: partial.color ?? nextColor(prev),
-        }
-        const updated = [...prev, account]
-        persistAll(updated)
-        setSavingsAccountsState(updated)
-        return updated
-      })
+      const account: SavingsAccount = {
+        ...partial,
+        id: partial.id ?? generateId(),
+        color: partial.color ?? nextColor(accounts),
+      }
+      const updated = [...accounts, account]
+      setAccounts(updated)
+      persistAll(updated)
+      setSavingsAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setSavingsAccountsState],
+    [accounts, persistAll, recategorize, setSavingsAccountsState],
   )
 
   const updateAccount = useCallback(
     (id: string, patch: Partial<Omit<SavingsAccount, 'id'>>) => {
-      setAccounts((prev) => {
-        const updated = prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
-        persistAll(updated)
-        setSavingsAccountsState(updated)
-        return updated
-      })
+      const updated = accounts.map((a) => (a.id === id ? { ...a, ...patch } : a))
+      setAccounts(updated)
+      persistAll(updated)
+      setSavingsAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setSavingsAccountsState],
+    [accounts, persistAll, recategorize, setSavingsAccountsState],
   )
 
   const deleteAccount = useCallback(
     (id: string) => {
-      setAccounts((prev) => {
-        const updated = prev.filter((a) => a.id !== id)
-        persistAll(updated)
-        setSavingsAccountsState(updated)
-        return updated
-      })
+      const updated = accounts.filter((a) => a.id !== id)
+      setAccounts(updated)
+      persistAll(updated)
+      setSavingsAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setSavingsAccountsState],
+    [accounts, persistAll, recategorize, setSavingsAccountsState],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }

@@ -13,6 +13,8 @@
  *   PUT  /api/state/rules                — persist custom rules
  *   GET  /api/state/spaarpotjes          — load savings goal accounts
  *   PUT  /api/state/spaarpotjes          — persist savings goal accounts
+ *   GET  /api/state/personal-accounts    — load personal account IBANs
+ *   PUT  /api/state/personal-accounts    — persist personal account IBANs
  *   GET  /api/state/tag-overrides        — load tag overrides (txId → string[])
  *   PUT  /api/state/tag-overrides        — persist tag overrides
  *   GET  /api/state/dismissed            — load dismissed anomaly finding IDs
@@ -26,8 +28,8 @@
  *   GET  /api/state/summary              — metadata: which keys exist, lastUpdated, sizes
  *   POST /api/state/reset                — delete all state files
  *
- * All GET endpoints return 404 { error: "not found" } when the file doesn't
- * exist — React treats this as empty/default state, not an error.
+ * All GET endpoints return 200 with an empty default envelope when state file
+ * doesn't exist yet.
  */
 
 import { Router } from 'express'
@@ -43,6 +45,12 @@ import type { KnowledgeSource } from '../services/knowledgeBase.js'
 export function createStateRouter(store: StateStore, knowledgeBasePath: string): Router {
   const router = Router()
 
+  const envelope = <T>(data: T) => ({
+    version: 1 as const,
+    lastUpdated: new Date().toISOString(),
+    data,
+  })
+
   // Parse JSON bodies for PUT requests
   router.use((_req, res, next) => {
     // express.json() is mounted on the parent app; this is just a reminder
@@ -54,11 +62,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/exclusions */
   router.get('/exclusions', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ ids: string[] }>('exclusions')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ ids: [] }))
   })
 
   /** PUT /api/state/exclusions */
@@ -84,11 +88,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/categories */
   router.get('/categories', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<Record<string, string>>('categories')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({}))
   })
 
   /** PUT /api/state/categories */
@@ -115,11 +115,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/rules */
   router.get('/rules', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ rules: unknown[] }>('rules')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ rules: [] }))
   })
 
   /** PUT /api/state/rules */
@@ -144,11 +140,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/spaarpotjes */
   router.get('/spaarpotjes', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ accounts: unknown[] }>('spaarpotjes')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ accounts: [] }))
   })
 
   /** PUT /api/state/spaarpotjes */
@@ -168,16 +160,37 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
     res.json({ ok: true })
   })
 
+  // ── Personal accounts ─────────────────────────────────────────────────────
+
+  /** GET /api/state/personal-accounts */
+  router.get('/personal-accounts', async (_req: Request, res: Response) => {
+    const data = await store.readEnvelope<{ accounts: unknown[] }>('personal-accounts')
+    res.json(data ?? envelope({ accounts: [] }))
+  })
+
+  /** PUT /api/state/personal-accounts */
+  router.put('/personal-accounts', async (req: Request, res: Response) => {
+    const body = req.body as unknown
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !Array.isArray((body as Record<string, unknown>).accounts)
+    ) {
+      res.status(400).json({ error: 'Body must be { accounts: PersonalAccount[] }' })
+      return
+    }
+
+    await store.write('personal-accounts', { accounts: (body as { accounts: unknown[] }).accounts })
+    res.json({ ok: true })
+  })
+
   // ── Tag overrides ──────────────────────────────────────────────────────────
 
   /** GET /api/state/tag-overrides */
   router.get('/tag-overrides', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<Record<string, string[]>>('tag-overrides')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({}))
   })
 
   /** PUT /api/state/tag-overrides */
@@ -205,11 +218,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/dismissed */
   router.get('/dismissed', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ ids: string[] }>('dismissed')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ ids: [] }))
   })
 
   /** PUT /api/state/dismissed */
@@ -235,11 +244,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/default-name-overrides */
   router.get('/default-name-overrides', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<Record<string, string>>('default-name-overrides')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({}))
   })
 
   /** PUT /api/state/default-name-overrides */
@@ -266,11 +271,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   /** GET /api/state/knowledge */
   router.get('/knowledge', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ sources: KnowledgeSource[] }>('knowledge')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ sources: [] }))
   })
 
   /** PUT /api/state/knowledge */
@@ -423,11 +424,7 @@ export function createStateRouter(store: StateStore, knowledgeBasePath: string):
   // ── Anomaly analysis results (read-only) ──────────────────────────────────
   router.get('/anomalies', async (_req: Request, res: Response) => {
     const data = await store.readEnvelope<{ findings: unknown[]; analyzedAt: string }>('anomalies')
-    if (!data) {
-      res.status(404).json({ error: 'not found' })
-      return
-    }
-    res.json(data)
+    res.json(data ?? envelope({ findings: [], analyzedAt: '' }))
   })
 
   // ── Summary ────────────────────────────────────────────────────────────────

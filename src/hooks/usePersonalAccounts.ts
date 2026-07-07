@@ -64,45 +64,39 @@ export function usePersonalAccounts(): UsePersonalAccountsResult {
 
   const addAccount = useCallback(
     (account: Omit<PersonalAccount, 'autoDetected'>) => {
-      setAccounts((prev) => {
-        const updated = [...prev, { ...account, autoDetected: false }]
-        persistAll(updated)
-        setPersonalAccountsState(updated)
-        return updated
-      })
+      const updated = [...accounts, { ...account, autoDetected: false }]
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setPersonalAccountsState],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   const updateAccount = useCallback(
     (iban: string, patch: Partial<Omit<PersonalAccount, 'iban' | 'autoDetected'>>) => {
-      setAccounts((prev) => {
-        const updated = prev.map((a) =>
-          a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
-        )
-        persistAll(updated)
-        setPersonalAccountsState(updated)
-        return updated
-      })
+      const updated = accounts.map((a) =>
+        a.iban.toLowerCase() === iban.toLowerCase() ? { ...a, ...patch } : a,
+      )
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setPersonalAccountsState],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   const deleteAccount = useCallback(
     (iban: string) => {
-      setAccounts((prev) => {
-        const updated = prev.filter(
-          (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
-        )
-        persistAll(updated)
-        setPersonalAccountsState(updated)
-        return updated
-      })
+      const updated = accounts.filter(
+        (a) => a.iban.toLowerCase() !== iban.toLowerCase(),
+      )
+      setAccounts(updated)
+      persistAll(updated)
+      setPersonalAccountsState(updated)
       recategorize()
     },
-    [persistAll, recategorize, setPersonalAccountsState],
+    [accounts, persistAll, recategorize, setPersonalAccountsState],
   )
 
   return { accounts, addAccount, updateAccount, deleteAccount }
