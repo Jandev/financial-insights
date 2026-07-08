@@ -35,6 +35,14 @@ export interface UseCategoryRulesResult {
   /** Add a new custom rule. An `id` is auto-generated if not supplied. */
   addRule: (rule: CategoryRuleDraft & { id?: string }) => void
 
+  /**
+   * Add a new custom rule at the FRONT of the list so it is evaluated before
+   * all existing rules. Use this for explicit user assignments (e.g. "All from
+   * [counterparty]") where the intent is to override any existing matching rule.
+   * An `id` is auto-generated if not supplied.
+   */
+  prependRule: (rule: CategoryRuleDraft & { id?: string }) => void
+
   /** Replace an existing custom rule by id. */
   updateRule: (id: string, rule: CategoryRuleDraft) => void
 
@@ -104,6 +112,25 @@ export function useCategoryRules(): UseCategoryRulesResult {
     [customRules, setCategorizationRules, recategorize],
   )
 
+  const prependRule = useCallback(
+    (rule: CategoryRuleDraft & { id?: string }) => {
+      const nextId = rule.id ?? generateId()
+      const newRule: CategoryRule =
+        rule.kind === 'condition'
+          ? { ...rule, id: nextId }
+          : { ...rule, id: nextId }
+
+      // Prepend so this rule is evaluated before all existing rules. This is
+      // the right behaviour for explicit user assignments via "All from …"
+      // where the intent is to override any earlier matching catch-all.
+      const updated = [newRule, ...customRules].map(migrateCustomRule)
+      setCategorizationRules(updated)
+      debouncePut('rules', { rules: updated })
+      recategorize()
+    },
+    [customRules, setCategorizationRules, recategorize],
+  )
+
   const updateRule = useCallback(
     (id: string, rule: CategoryRuleDraft) => {
       const updated = customRules.map((existing) => {
@@ -133,5 +160,5 @@ export function useCategoryRules(): UseCategoryRulesResult {
     recategorize()
   }, [setCategorizationRules, recategorize])
 
-  return { rules, customRules, addRule, updateRule, deleteRule, resetToDefaults, defaultNameOverrides, setDefaultNameOverride, removeDefaultNameOverride, resetDefaultNameOverrides }
+  return { rules, customRules, addRule, prependRule, updateRule, deleteRule, resetToDefaults, defaultNameOverrides, setDefaultNameOverride, removeDefaultNameOverride, resetDefaultNameOverrides }
 }
