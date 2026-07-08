@@ -40,7 +40,7 @@ function pickTargetCategoryId(ids: string[], currentId: string): string {
  */
 export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownProps) {
   const { overrides, setOverride, removeOverride } = useCategoryOverrides()
-  const { rules, addRule, prependRule } = useCategoryRules()
+  const { rules, prependRule } = useCategoryRules()
   const recategorize = useStore((s) => s.recategorize)
   const aiCategories = useStore((s) => s.aiCategories)
   const removeAiCategory = useStore((s) => s.removeAiCategory)
