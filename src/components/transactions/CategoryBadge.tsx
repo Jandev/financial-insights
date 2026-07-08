@@ -40,7 +40,7 @@ function pickTargetCategoryId(ids: string[], currentId: string): string {
  */
 export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownProps) {
   const { overrides, setOverride, removeOverride } = useCategoryOverrides()
-  const { rules, addRule } = useCategoryRules()
+  const { rules, addRule, prependRule } = useCategoryRules()
   const recategorize = useStore((s) => s.recategorize)
   const aiCategories = useStore((s) => s.aiCategories)
   const removeAiCategory = useStore((s) => s.removeAiCategory)
@@ -95,7 +95,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
 
   function handleAllFromCounterparty() {
     if (!pendingCategory) return
-    addRule({
+    prependRule({
       kind: 'condition',
       name: pendingCategory.name,
       color: pendingCategory.color,
@@ -109,7 +109,6 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
         },
       ],
       combinator: 'and',
-      id: pendingCategory.targetId,
     })
     recategorize()
     onClose()
