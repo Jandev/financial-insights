@@ -7,6 +7,7 @@ import { useCategoryRules } from '@/hooks/useCategoryRules'
 import { useCategoryRuleList } from '@/store/selectors'
 import { useStore } from '@/store'
 import { FALLBACK_CATEGORY_COLOR } from '@/lib/categories'
+import { debouncePut } from '@/lib/serverState'
 import type { Transaction } from '@/types/transaction'
 
 /** Minimal transaction fields required by the picker and badge components. */
@@ -122,7 +123,10 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
   }
 
   function handleRevertAiCategory() {
+    const updated = { ...aiCategories }
+    delete updated[tx.id]
     removeAiCategory(tx.id)
+    debouncePut('ai-categories', updated)
     recategorize()
     onClose()
   }
