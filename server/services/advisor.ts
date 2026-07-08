@@ -18,9 +18,41 @@ import { getTransactions,
   getByDateRange,
   getAvailableMonths,
 } from './transactionStore.js'
-import { runBatchCategorization, DEFAULT_AVAILABLE_CATEGORIES } from './categorizer.js'
+import { runBatchCategorization, DEFAULT_AVAILABLE_CATEGORIES, ALL_BUILT_IN_CATEGORY_NAMES } from './categorizer.js'
 import { searchKnowledge, getKnowledgeStatus } from './knowledgeBase.js'
 import type { StateStore } from './stateStore.js'
+
+// ─── Category display name helper ────────────────────────────────────────────
+
+/**
+ * Build an ID → display name map with the same priority as the frontend:
+ *   1. Custom rule names (stateStore `rules`)
+ *   2. User-overridden built-in names (stateStore `default-name-overrides`)
+ *   3. ALL_BUILT_IN_CATEGORY_NAMES from categorizer (server-side source of truth)
+ */
+async function buildCategoryNameMap(stateStore: StateStore): Promise<Map<string, string>> {
+  const map = new Map<string, string>(Object.entries(ALL_BUILT_IN_CATEGORY_NAMES))
+
+  // Layer 2: user-overridden names for built-in categories
+  const nameOverrides = await stateStore
+    .read<Record<string, string>>('default-name-overrides')
+    .catch(() => null)
+  if (nameOverrides) {
+    for (const [id, name] of Object.entries(nameOverrides)) {
+      map.set(id, name)
+    }
+  }
+
+  // Layer 1 (highest priority): custom rule names
+  const stored = await stateStore
+    .read<{ rules: Array<{ id: string; name: string }> }>('rules')
+    .catch(() => null)
+  for (const rule of stored?.rules ?? []) {
+    map.set(rule.id, rule.name)
+  }
+
+  return map
+}
 
 // ─── Memory (in-process, resets on server restart) ────────────────────────────
 
@@ -92,55 +124,6 @@ const getTopMerchantsTool = tool(
   },
 )
 
-const getCategoryBreakdownTool = tool(
-  async ({ period }) => {
-    const txs = formatPeriod(period).filter((t) => t.amount < 0)
-    const byCategory = new Map<string, number>()
-    for (const tx of txs) {
-      byCategory.set(tx.category, (byCategory.get(tx.category) ?? 0) + Math.abs(tx.amount))
-    }
-    const breakdown = [...byCategory.entries()]
-      .sort(([, a], [, b]) => b - a)
-      .map(([name, amount]) => ({ name, amount }))
-    return cap(JSON.stringify(breakdown))
-  },
-  {
-    name: 'getCategoryBreakdown',
-    description: 'Get spending breakdown by category for a period',
-    schema: z.object({
-      period: z.string().describe("YYYY-MM or YYYY or 'all'"),
-    }),
-  },
-)
-
-const getBiggestTransactionsTool = tool(
-  async ({ type, period, limit }) => {
-    let txs = period ? formatPeriod(period) : getTransactions()
-    if (type === 'expense') txs = txs.filter((t) => t.amount < 0)
-    else if (type === 'income') txs = txs.filter((t) => t.amount > 0)
-
-    const top = [...txs]
-      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-      .slice(0, limit)
-      .map((tx) => ({
-        date: tx.date,
-        counterpartyName: tx.counterpartyName,
-        amount: tx.amount,
-        category: tx.category,
-        description: tx.description.slice(0, 60),
-      }))
-    return cap(JSON.stringify(top))
-  },
-  {
-    name: 'getBiggestTransactions',
-    description: 'Get the largest individual transactions by absolute amount',
-    schema: z.object({
-      type: z.enum(['expense', 'income', 'both']),
-      period: z.string().optional(),
-      limit: z.number().default(5),
-    }),
-  },
-)
 
 const getMonthComparisonTool = tool(
   async ({ month1, month2 }) => {
@@ -235,13 +218,16 @@ Available data periods: ${monthsList}${latest ? `\nMost recent month: ${latest}`
 ${kbNote}
 
 IMPORTANT — citations when using the knowledge base:
-- When you use searchFinancialKnowledge, you MUST cite the sources in your answer.
-- Add a brief inline citation after the relevant sentence: [SourceName]
-- At the end of your answer add a "Sources" section listing each source used:
+- ONLY cite sources returned by searchFinancialKnowledge — never from memory, general knowledge, or training data.
+- The tool returns JSON: { results: [{ snippet, sourceName, link? }] }
+- Use the \`sourceName\` field EXACTLY as returned — do not rephrase, abbreviate, or change it.
+- For the URL, use the \`link\` field EXACTLY as returned. If the result has no \`link\` field, write the source name only — NEVER construct, guess, or infer a URL from the source name or from general knowledge.
+- Format inline citations as: [sourceName] after the relevant sentence.
+- At the end of your answer, add a "Sources" section ONLY if you used this tool AND got results:
     Sources:
-    - [SourceName](https://url) — or just "SourceName" when no URL is available
-- Never invent or guess sources. Only cite what the tool actually returned.
-- Do not cite the knowledge base if you did not call the tool.
+    - [sourceName](exact link from tool) — or just "sourceName" when no link was returned
+- If the tool returned no results, or you did not call the tool, do NOT add a Sources section.
+- Never add citations for facts that came from your own training data, even if you happen to know the topic.
 
 IMPORTANT — time period handling:
 - When the user asks a question that does not specify a time period (e.g. "where am I spending the most?", "what are my biggest expenses?"), you MUST ask which period they want before calling any tool.
@@ -262,6 +248,58 @@ export function getAdvisor(
 
   // Lazy singleton — recreate if LLM config changes would require it
   if (!_advisor) {
+    const getCategoryBreakdownTool = tool(
+      async ({ period }) => {
+        const txs = formatPeriod(period).filter((t) => t.amount < 0)
+        const nameMap = await buildCategoryNameMap(stateStore)
+        const byCategory = new Map<string, number>()
+        for (const tx of txs) {
+          byCategory.set(tx.category, (byCategory.get(tx.category) ?? 0) + Math.abs(tx.amount))
+        }
+        const breakdown = [...byCategory.entries()]
+          .sort(([, a], [, b]) => b - a)
+          .map(([id, amount]) => ({ name: nameMap.get(id) ?? id, amount }))
+        return cap(JSON.stringify(breakdown))
+      },
+      {
+        name: 'getCategoryBreakdown',
+        description: 'Get spending breakdown by category for a period',
+        schema: z.object({
+          period: z.string().describe("YYYY-MM or YYYY or 'all'"),
+        }),
+      },
+    )
+
+    const getBiggestTransactionsTool = tool(
+      async ({ type, period, limit }) => {
+        let txs = period ? formatPeriod(period) : getTransactions()
+        if (type === 'expense') txs = txs.filter((t) => t.amount < 0)
+        else if (type === 'income') txs = txs.filter((t) => t.amount > 0)
+
+        const nameMap = await buildCategoryNameMap(stateStore)
+        const top = [...txs]
+          .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+          .slice(0, limit)
+          .map((tx) => ({
+            date: tx.date,
+            counterpartyName: tx.counterpartyName,
+            amount: tx.amount,
+            category: nameMap.get(tx.category) ?? tx.category,
+            description: tx.description.slice(0, 60),
+          }))
+        return cap(JSON.stringify(top))
+      },
+      {
+        name: 'getBiggestTransactions',
+        description: 'Get the largest individual transactions by absolute amount',
+        schema: z.object({
+          type: z.enum(['expense', 'income', 'both']),
+          period: z.string().optional(),
+          limit: z.number().default(5),
+        }),
+      },
+    )
+
     const runCategorizationTool = tool(
       async ({ period }) => {
         const label = period ? `period ${period}` : 'all transactions'

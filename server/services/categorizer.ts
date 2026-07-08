@@ -43,6 +43,20 @@ export const DEFAULT_AVAILABLE_CATEGORIES: Array<{ id: string; name: string }> =
   { id: 'uncategorized',        name: 'Other' },
 ]
 
+/**
+ * Complete ID → display name map for all built-in categories, including
+ * system-assigned ones that the LLM cannot pick (spaarpotje, internal-transfer).
+ * Derived from DEFAULT_AVAILABLE_CATEGORIES so names stay in sync.
+ * Mirrors DEFAULT_RULES in src/lib/categories.ts — keep in sync.
+ */
+export const ALL_BUILT_IN_CATEGORY_NAMES: Record<string, string> = {
+  ...Object.fromEntries(DEFAULT_AVAILABLE_CATEGORIES.map((c) => [c.id, c.name])),
+  // System-assigned (not LLM-assignable, so absent from DEFAULT_AVAILABLE_CATEGORIES)
+  'spaarpotje':            'Spaarpotje',
+  'spaarpotje-withdrawal': 'Spaarpotje (opname)',
+  'internal-transfer':     'Internal Transfer',
+}
+
 export const CATEGORIZE_SYSTEM_PROMPT = `You are a Dutch personal finance transaction categorizer.
 Classify each transaction into exactly one category based on the counterparty name and description.
 Transaction codes: 'bc'=card payment, 'ei'=SEPA direct debit, 'cb'=incoming credit/Tikkie, 'tb'=own-bank transfer.
