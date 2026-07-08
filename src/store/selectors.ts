@@ -154,18 +154,22 @@ function buildCategoryMeta(rules: CategoryRule[]): Map<string, { name: string; c
  *
  * Priority order:
  *   1. Manual override (already baked into tx.category via recategorize()) — wins
- *   2. AI category (from aiCategories overlay) — applied when no manual override
- *   3. Rule-based category (tx.category) — fallback
+ *   2. Custom user rule (tx.category matches a user-created rule ID) — wins over AI
+ *   3. AI category (from aiCategories overlay) — applied when no manual override or custom rule
+ *   4. Rule-based category (tx.category) — fallback
  *
  * Manual overrides are read from the synced Zustand categorization state.
+ * Custom rule IDs are the IDs of user-created categorization rules — if a transaction
+ * was categorised by one of those rules, AI suggestions should not override it.
  */
 function applyAIOverlay(
   tx: Transaction,
   aiCategories: Record<string, { category: string; source: 'llm' | 'rule' }>,
   overrides: Record<string, string>,
+  customRuleIds: Set<string>,
 ): Transaction {
   const aiCat = aiCategories[tx.id]
-  if (aiCat?.source === 'llm' && !overrides[tx.id]) {
+  if (aiCat?.source === 'llm' && !overrides[tx.id] && !customRuleIds.has(tx.category)) {
     return { ...tx, category: aiCat.category }
   }
   return tx
@@ -180,22 +184,24 @@ function applyAIOverlay(
  * Used by charts and KPI cards.
  */
 export function useActiveTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters, aiCategories, categoryOverridesState } = useStore(
+  const { transactions, excludedIds, filters, aiCategories, categoryOverridesState, categorizationRules } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
       filters: s.filters,
       aiCategories: s.aiCategories,
       categoryOverridesState: s.categoryOverridesState,
+      categorizationRules: s.categorizationRules,
     })),
   )
 
   return useMemo(() => {
+    const customRuleIds = new Set(categorizationRules.map((r) => r.id))
     return transactions
       .filter((tx) => !excludedIds.has(tx.id))
-      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState))
+      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState, customRuleIds))
       .filter((tx) => matchesFilters(tx, filters))
-  }, [transactions, excludedIds, filters, aiCategories, categoryOverridesState])
+  }, [transactions, excludedIds, filters, aiCategories, categoryOverridesState, categorizationRules])
 }
 
 /**
@@ -205,7 +211,7 @@ export function useActiveTransactions(): Transaction[] {
  * AI category overlay is applied consistently with useActiveTransactions.
  */
 export function useFilteredTransactions(): Transaction[] {
-  const { transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState } = useStore(
+  const { transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState, categorizationRules } = useStore(
     useShallow((s) => ({
       transactions: s.transactions,
       excludedIds: s.excludedIds,
@@ -214,23 +220,25 @@ export function useFilteredTransactions(): Transaction[] {
       findings: s.findings,
       dismissedFindingIds: s.dismissedFindingIds,
       categoryOverridesState: s.categoryOverridesState,
+      categorizationRules: s.categorizationRules,
     })),
   )
 
   return useMemo(() => {
+    const customRuleIds = new Set(categorizationRules.map((r) => r.id))
     // Build active finding ID set once for O(1) lookup
     const activeFlaggedIds = filters.showFlaggedOnly
       ? new Set(findings.filter((f) => !dismissedFindingIds.has(f.transactionId)).map((f) => f.transactionId))
       : null
     return transactions
-      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState))
+      .map((tx) => applyAIOverlay(tx, aiCategories, categoryOverridesState, customRuleIds))
       .filter((tx) => {
         if (!matchesFilters(tx, filters)) return false
         if (!filters.showExcluded && excludedIds.has(tx.id)) return false
         if (activeFlaggedIds && !activeFlaggedIds.has(tx.id)) return false
         return true
       })
-  }, [transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState])
+  }, [transactions, excludedIds, filters, aiCategories, findings, dismissedFindingIds, categoryOverridesState, categorizationRules])
 }
 
 /** Number of currently excluded transactions. */

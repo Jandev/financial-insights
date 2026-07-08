@@ -109,7 +109,7 @@ export function CategoryPickerDropdown({ tx, onClose }: CategoryPickerDropdownPr
         },
       ],
       combinator: 'and',
-      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: pendingCategory.targetId,
     })
     recategorize()
     onClose()
