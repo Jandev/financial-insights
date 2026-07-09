@@ -47,7 +47,7 @@ import { mkdir, readdir } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { llmRateLimiter } from './middleware/rateLimiter.js'
+import { llmRateLimiter, fileSystemRateLimiter } from './middleware/rateLimiter.js'
 import { StateStore } from './services/stateStore.js'
 import { loadFromDisk } from './services/transactionStore.js'
 import { initKnowledgeBase } from './services/knowledgeBase.js'
@@ -109,6 +109,10 @@ app.get('/api/health', (_req, res) => {
     statePath: STATE_PATH,
   })
 })
+
+// Rate limit file-system routes (issue #84).
+app.use('/api/config', fileSystemRateLimiter)
+app.use('/api/transactions', fileSystemRateLimiter)
 
 /**
  * Non-secret config values safe to expose to the browser.
@@ -187,7 +191,8 @@ app.use('/api/llm', createChatRouter(stateStore))
 const distDir = path.join(__dirname, '..', 'dist')
 app.use(express.static(distDir))
 
-/** Fallback: send index.html for all unmatched routes (client-side routing) */
+/** Fallback: send index.html for all unmatched routes (client-side routing).
+ *  Rate limiting of static assets is left to the reverse-proxy layer. */
 app.get('*', (_req, res) => {
   res.sendFile(path.join(distDir, 'index.html'))
 })
