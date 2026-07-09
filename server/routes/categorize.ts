@@ -9,6 +9,8 @@ import { Router } from 'express'
 import type { StateStore } from '../services/stateStore.js'
 import { createSSEStream } from '../lib/sse.js'
 import { isLoaded } from '../services/transactionStore.js'
+import { getLLMInfo } from '../services/llm.js'
+import { normalizeLLMError } from '../services/llmErrors.js'
 import { runBatchCategorization, DEFAULT_AVAILABLE_CATEGORIES } from '../services/categorizer.js'
 
 export function createCategorizeRouter(stateStore: StateStore): Router {
@@ -50,8 +52,14 @@ export function createCategorizeRouter(stateStore: StateStore): Router {
 
       sse.send({ type: 'done', totalProcessed: Object.keys(allResults).length })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      sse.send({ type: 'error', message: msg })
+      const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'categorize' })
+      sse.send({
+        type: 'error',
+        message: normalized.message,
+        code: normalized.code,
+        hint: normalized.hint,
+        details: normalized.details,
+      })
     }
 
     sse.end()

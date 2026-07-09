@@ -7,10 +7,11 @@
 
 import { Router } from 'express'
 import type { StateStore } from '../services/stateStore.js'
-import { createLLMClient } from '../services/llm.js'
+import { createLLMClient, getLLMInfo } from '../services/llm.js'
 import { createSSEStream } from '../lib/sse.js'
 import { buildInsightContext } from '../services/insightBuilder.js'
 import { getTransactions, isLoaded } from '../services/transactionStore.js'
+import { normalizeLLMError } from '../services/llmErrors.js'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
 import { StringOutputParser } from '@langchain/core/output_parsers'
 
@@ -117,7 +118,14 @@ export function createInsightsRouter(stateStore: StateStore): Router {
       sse.send({ type: 'done', cachedAt: new Date().toISOString() })
     } catch (err) {
       console.error('[insights] streaming error:', err)
-      sse.send({ type: 'error', message: 'Failed to generate insight. Please try again.' })
+      const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'insights' })
+      sse.send({
+        type: 'error',
+        message: normalized.message,
+        code: normalized.code,
+        hint: normalized.hint,
+        details: normalized.details,
+      })
     }
 
     sse.end()

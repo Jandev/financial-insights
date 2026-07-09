@@ -8,6 +8,8 @@
 import { Router } from 'express'
 import type { StateStore } from '../services/stateStore.js'
 import { createSSEStream } from '../lib/sse.js'
+import { getLLMInfo } from '../services/llm.js'
+import { normalizeLLMError } from '../services/llmErrors.js'
 import { getTransactions, isLoaded } from '../services/transactionStore.js'
 import { detectAnomalies } from '../services/anomalyDetector.js'
 import { explainAnomalies } from '../services/anomalyExplainer.js'
@@ -45,7 +47,14 @@ export function createAnalyzeRouter(stateStore: StateStore): Router {
       sse.send({ type: 'done', findings })
     } catch (err) {
       console.error('[analyze] error:', err)
-      sse.send({ type: 'error', message: String(err) })
+      const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'analyze' })
+      sse.send({
+        type: 'error',
+        message: normalized.message,
+        code: normalized.code,
+        hint: normalized.hint,
+        details: normalized.details,
+      })
     }
 
     sse.end()

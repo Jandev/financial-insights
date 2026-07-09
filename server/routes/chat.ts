@@ -10,6 +10,8 @@ import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { createSSEStream } from '../lib/sse.js'
 import { getAdvisor, clearAdvisorThread } from '../services/advisor.js'
+import { getLLMInfo } from '../services/llm.js'
+import { normalizeLLMError } from '../services/llmErrors.js'
 import type { StateStore } from '../services/stateStore.js'
 
 // In-memory queue: threadId → pending user message
@@ -95,7 +97,14 @@ export function createChatRouter(stateStore: StateStore): Router {
       sse.send({ type: 'done' })
     } catch (err) {
       console.error('[chat] streaming error:', err)
-      sse.send({ type: 'error', message: 'An error occurred. Please try again.' })
+      const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'chat' })
+      sse.send({
+        type: 'error',
+        message: normalized.message,
+        code: normalized.code,
+        hint: normalized.hint,
+        details: normalized.details,
+      })
     }
 
     sse.end()
