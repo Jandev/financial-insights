@@ -6,7 +6,8 @@
  */
 
 import { z } from 'zod'
-import { createLLMClient } from './llm.js'
+import { createLLMClient, getLLMInfo } from './llm.js'
+import { asLLMRequestError, normalizeLLMError } from './llmErrors.js'
 import type { TxSnapshot } from './transactionStore.js'
 import type { AnomalyCandidate } from './anomalyDetector.js'
 
@@ -90,6 +91,10 @@ export async function explainAnomalies(
       detectorType: candidateByTxId.get(f.transactionId) ?? 'unknown',
     }))
   } catch (err) {
+    const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'analyze' })
+    if (normalized.isCompatibilityError) {
+      throw asLLMRequestError(err, { llm: getLLMInfo().info, feature: 'analyze' })
+    }
     console.error('[anomalyExplainer] LLM call failed:', err)
     // Return empty findings rather than crashing
     return []

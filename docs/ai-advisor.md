@@ -98,6 +98,17 @@ The advisor uses the same LLM instance as other AI features. Provider priority:
 1. Azure OpenAI (if `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_KEY` set)
 2. Direct OpenAI (if `OPENAI_API_KEY` set)
 
+Mode is configured per provider:
+
+- `AZURE_OPENAI_API_MODE=chat|responses`
+- `OPENAI_API_MODE=chat|responses`
+
+Compatibility examples:
+
+- `gpt-4o-mini` and `gpt-5.2-chat` → `chat`
+- `gpt-5.3-codex` → `responses`
+- `gpt-5.4` → provider/API-version dependent
+
 The `LLMGate` component on the frontend hides the chat button when no LLM is configured. Check availability via `GET /api/llm/status`.
 
 ## LangSmith tracing

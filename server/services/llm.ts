@@ -10,11 +10,13 @@
 import { AzureChatOpenAI, ChatOpenAI } from '@langchain/openai'
 
 export type LLMProvider = 'azure_openai' | 'openai'
+export type LLMApiMode = 'chat' | 'responses'
 export type LLMClient = AzureChatOpenAI | ChatOpenAI
 
 export interface LLMInfo {
   provider: LLMProvider
   model: string
+  mode: LLMApiMode
 }
 
 interface LLMProviderDefinition {
@@ -22,6 +24,7 @@ interface LLMProviderDefinition {
   isConfigured: () => boolean
   create: (options: { temperature: number; maxTokens: number }) => LLMClient
   getModel: () => string
+  getMode: () => LLMApiMode
 }
 
 function getRuntimeOptions(): { temperature: number; maxTokens: number } {
@@ -31,17 +34,23 @@ function getRuntimeOptions(): { temperature: number; maxTokens: number } {
   }
 }
 
+function resolveApiMode(value: string | undefined): LLMApiMode {
+  return value?.trim().toLowerCase() === 'responses' ? 'responses' : 'chat'
+}
+
 const providers: LLMProviderDefinition[] = [
   {
     provider: 'azure_openai',
     isConfigured: () => Boolean(process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY),
     getModel: () => process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini',
+    getMode: () => resolveApiMode(process.env.AZURE_OPENAI_API_MODE),
     create: ({ temperature, maxTokens }) =>
       new AzureChatOpenAI({
         azureOpenAIEndpoint: process.env.AZURE_OPENAI_ENDPOINT,
         azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY,
         azureOpenAIApiDeploymentName: process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini',
         azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2025-01-01-preview',
+        useResponsesApi: resolveApiMode(process.env.AZURE_OPENAI_API_MODE) === 'responses',
         temperature,
         maxTokens,
       }),
@@ -50,6 +59,7 @@ const providers: LLMProviderDefinition[] = [
     provider: 'openai',
     isConfigured: () => Boolean(process.env.OPENAI_API_KEY),
     getModel: () => process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+    getMode: () => resolveApiMode(process.env.OPENAI_API_MODE),
     create: ({ temperature, maxTokens }) =>
       new ChatOpenAI({
         apiKey: process.env.OPENAI_API_KEY,
@@ -57,6 +67,7 @@ const providers: LLMProviderDefinition[] = [
         configuration: process.env.OPENAI_BASE_URL
           ? { baseURL: process.env.OPENAI_BASE_URL }
           : undefined,
+        useResponsesApi: resolveApiMode(process.env.OPENAI_API_MODE) === 'responses',
         temperature,
         maxTokens,
       }),
@@ -90,6 +101,7 @@ export function getLLMInfo(): { available: boolean; info: LLMInfo | null } {
     info: {
       provider: provider.provider,
       model: provider.getModel(),
+      mode: provider.getMode(),
     },
   }
 }

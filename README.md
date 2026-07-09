@@ -44,7 +44,14 @@ Required variables:
 | `AZURE_OPENAI_ENDPOINT` | `https://sp-coding.cognitiveservices.azure.com/` | Azure OpenAI resource endpoint |
 | `AZURE_OPENAI_API_KEY` | `sk-...` | API key from Azure Portal |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Deployment name |
+| `AZURE_OPENAI_API_MODE` | `chat` | Endpoint mode: `chat` or `responses` |
 | `AZURE_OPENAI_API_VERSION` | `2025-01-01-preview` | **Must be `2025-01-01-preview`** for LangGraph tool-calling |
+
+Model compatibility examples:
+- `gpt-4o-mini` → `chat`
+- `gpt-5.2-chat` → `chat`
+- `gpt-5.3-codex` → `responses`
+- `gpt-5.4` → provider/API-version dependent (`chat` or `responses`)
 
 > **Note:** Use the `cognitiveservices.azure.com` endpoint (Foundry format), not the older `openai.azure.com` format.
 
@@ -131,15 +138,22 @@ The image contains no CSV data. State survives container restarts via the `data/
 | `AZURE_OPENAI_ENDPOINT` | _(empty)_ | Azure OpenAI endpoint (`cognitiveservices.azure.com` format) |
 | `AZURE_OPENAI_API_KEY` | _(empty)_ | Azure OpenAI key |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Azure OpenAI deployment name |
+| `AZURE_OPENAI_API_MODE` | `chat` | Azure endpoint mode: `chat` or `responses` |
 | `AZURE_OPENAI_API_VERSION` | `2025-01-01-preview` | Must be `2025-01-01-preview` for tool-calling |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI direct key (fallback when Azure vars absent) |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model name for direct OpenAI |
+| `OPENAI_API_MODE` | `chat` | OpenAI endpoint mode: `chat` or `responses` |
 | `LLM_TEMPERATURE` | `0.3` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per LLM response |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | _(empty)_ | LangSmith API key |
 | `LANGSMITH_PROJECT` | `financial-insights` | LangSmith project name |
+
+Compatibility quick reference:
+- `gpt-4o-mini` and `gpt-5.2-chat`: use `*_API_MODE=chat`
+- `gpt-5.3-codex`: use `*_API_MODE=responses`
+- `gpt-5.4`: check provider support and API version; use the mode required by your deployment
 
 See `.env.example` for the full documented template.
 

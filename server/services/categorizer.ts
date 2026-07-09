@@ -14,7 +14,8 @@
  */
 
 import { z } from 'zod'
-import { createLLMClient } from './llm.js'
+import { createLLMClient, getLLMInfo } from './llm.js'
+import { asLLMRequestError, normalizeLLMError } from './llmErrors.js'
 import {
   getTransactions,
   getByMonth,
@@ -178,7 +179,11 @@ export async function runBatchCategorization(
 
       processed += batch.length
       onProgress?.(processed, txs.length, resolvedBatch)
-    } catch {
+    } catch (err) {
+      const normalized = normalizeLLMError(err, { llm: getLLMInfo().info, feature: 'categorize' })
+      if (normalized.isCompatibilityError) {
+        throw asLLMRequestError(err, { llm: getLLMInfo().info, feature: 'categorize' })
+      }
       // Rule-based fallback for this batch
       for (const tx of batch) {
         allResults[tx.id] = {

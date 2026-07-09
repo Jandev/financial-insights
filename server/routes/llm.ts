@@ -31,6 +31,7 @@ export function createLLMRouter(stateStore: StateStore): Router {
       available,
       provider: info?.provider ?? null,
       model: info?.model ?? null,
+      mode: info?.mode ?? null,
       features: available ? ['categorize', 'anomalies', 'insights', 'chat'] : [],
     })
   })
